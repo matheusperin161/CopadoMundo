@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ':*)",
+      "Bash(pip install:*)",
+      "Bash(npx create-next-app@latest web --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(npx shadcn@latest init --defaults -y)",
+      "Bash(npx shadcn@latest add badge card tabs dialog sheet input textarea toast separator skeleton avatar progress --yes)",
+      "Bash(npx shadcn@latest add badge card tabs dialog sheet input textarea sonner separator skeleton avatar progress --yes)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
