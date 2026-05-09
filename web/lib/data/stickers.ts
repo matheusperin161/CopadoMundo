@@ -1,4 +1,4 @@
-export type StickerType = "badge" | "player" | "team_photo" | "history"
+export type StickerType = "badge" | "player" | "team_photo" | "history" | "sponsor"
 
 export interface Sticker {
   id: string
@@ -8,6 +8,7 @@ export interface Sticker {
   group: string
   number: number
   type: StickerType
+  playerName?: string
 }
 
 export interface CountryInfo {
@@ -94,16 +95,33 @@ export const GROUPS: Record<string, CountryInfo[]> = {
 }
 
 function getStickerType(number: number): StickerType {
-  if (number === 1) return "badge"
+  if (number === 1)  return "badge"
   if (number === 13) return "team_photo"
   return "player"
 }
 
+const CC_PLAYERS: { number: number; playerName: string; countryCode: string }[] = [
+  { number: 1,  playerName: "Harry Kane",        countryCode: "ENG" },
+  { number: 2,  playerName: "Kylian Mbappé",     countryCode: "FRA" },
+  { number: 3,  playerName: "Vinícius Jr.",       countryCode: "BRA" },
+  { number: 4,  playerName: "Lamine Yamal",       countryCode: "ESP" },
+  { number: 5,  playerName: "Joshua Kimmich",     countryCode: "GER" },
+  { number: 6,  playerName: "Erling Haaland",     countryCode: "NOR" },
+  { number: 7,  playerName: "Federico Valverde",  countryCode: "URU" },
+  { number: 8,  playerName: "Enner Valencia",     countryCode: "ECU" },
+  { number: 9,  playerName: "Jefferson Lerma",    countryCode: "COL" },
+  { number: 10, playerName: "Virgil van Dijk",    countryCode: "NED" },
+  { number: 11, playerName: "Alphonse Davies",    countryCode: "CAN" },
+  { number: 12, playerName: "Pedri González",     countryCode: "ESP" },
+  { number: 13, playerName: "Gabriel Magalhães",  countryCode: "BRA" },
+  { number: 14, playerName: "Santiago Giménez",   countryCode: "MEX" },
+]
+
 function generateStickers(): Sticker[] {
   const stickers: Sticker[] = []
 
-  // FWC History stickers
-  for (let i = 1; i <= 25; i++) {
+  // FWC History stickers (0–19)
+  for (let i = 0; i <= 19; i++) {
     stickers.push({
       id: `FWC${i}`,
       code: `FWC ${i}`,
@@ -115,7 +133,21 @@ function generateStickers(): Sticker[] {
     })
   }
 
-  // Country stickers
+  // Coca-Cola Star Players (CC1–CC14)
+  for (const p of CC_PLAYERS) {
+    stickers.push({
+      id: `CC${p.number}`,
+      code: `CC ${p.number}`,
+      country: "Coca-Cola Stars",
+      countryCode: "CC",
+      group: "CC",
+      number: p.number,
+      type: "sponsor",
+      playerName: p.playerName,
+    })
+  }
+
+  // Country stickers (1–20 each)
   for (const [group, countries] of Object.entries(GROUPS)) {
     for (const country of countries) {
       for (let num = 1; num <= 20; num++) {
@@ -176,4 +208,66 @@ export const FLAG_MAP: Record<string, string> = {
   FWC: "🏆",
   CC: "🥤",
   ...Object.fromEntries(ALL_COUNTRIES.map((c) => [c.code, c.flag])),
+}
+
+// Country color palettes for gradient sticker cards
+const COUNTRY_COLORS: Record<string, [string, string, string?]> = {
+  FWC: ["#1a1300", "#3d2e00", "#FFD23F"],
+  CC:  ["#c8000a", "#ff1a1a", "#ffffff"],
+  MEX: ["#006847", "#ffffff", "#ce1126"],
+  RSA: ["#007a4d", "#ffb612", "#002395"],
+  KOR: ["#003478", "#cd2e3a", "#ffffff"],
+  CZE: ["#d7141a", "#ffffff", "#11457e"],
+  CAN: ["#ff0000", "#ffffff"],
+  QAT: ["#8d1b3d", "#ffffff"],
+  BIH: ["#002395", "#fecb00", "#ffffff"],
+  SUI: ["#ff0000", "#ffffff"],
+  BRA: ["#009c3b", "#ffdf00", "#002776"],
+  SCO: ["#003da5", "#ffffff"],
+  HAI: ["#00209f", "#d21034"],
+  MAR: ["#c1272d", "#006233"],
+  TUR: ["#e30a17", "#ffffff"],
+  AUS: ["#002868", "#cc0000", "#ffffff"],
+  PAR: ["#d52b1e", "#ffffff", "#0038a8"],
+  USA: ["#3c3b6e", "#b22234", "#ffffff"],
+  ECU: ["#ffd100", "#0072ce", "#ed1c24"],
+  CIV: ["#f77f00", "#ffffff", "#009a44"],
+  CUW: ["#002b7f", "#009fca", "#f9e814"],
+  GER: ["#000000", "#dd0000", "#ffce00"],
+  NED: ["#ae1c28", "#ffffff", "#21468b"],
+  TUN: ["#e70013", "#ffffff"],
+  SWE: ["#006aa7", "#fecc02"],
+  JPN: ["#bc002d", "#ffffff"],
+  NZL: ["#00247d", "#cc0001", "#ffffff"],
+  IRN: ["#239f40", "#ffffff", "#da0000"],
+  EGY: ["#ce1126", "#ffffff", "#000000"],
+  BEL: ["#000000", "#fae042", "#ed2939"],
+  URU: ["#0038a8", "#ffffff", "#fcd116"],
+  KSA: ["#006c35", "#ffffff"],
+  CPV: ["#003893", "#cf2027", "#f7d116"],
+  ESP: ["#aa151b", "#f1bf00"],
+  NOR: ["#ef2b2d", "#ffffff", "#002868"],
+  IRQ: ["#000000", "#ce1126", "#ffffff"],
+  SEN: ["#00853f", "#fdef42", "#e31b23"],
+  FRA: ["#0055a4", "#ffffff", "#ef4135"],
+  JOR: ["#007a3d", "#000000", "#ffffff"],
+  AUT: ["#ed2939", "#ffffff"],
+  ALG: ["#006233", "#d21034", "#ffffff"],
+  ARG: ["#74acdf", "#ffffff", "#f6b40e"],
+  COL: ["#fcd116", "#003893", "#ce1126"],
+  UZB: ["#1eb53a", "#ffffff", "#ce1126"],
+  COD: ["#007fff", "#f7d618", "#ce1126"],
+  POR: ["#006600", "#ff0000", "#ffd700"],
+  PAN: ["#da121a", "#ffffff", "#00386a"],
+  GHA: ["#006b3f", "#fcd116", "#ce1126"],
+  CRO: ["#ff0000", "#ffffff", "#171796"],
+  ENG: ["#cf081f", "#ffffff"],
+}
+
+export function countryGradient(code: string): string {
+  const colors = COUNTRY_COLORS[code]
+  if (!colors) return "linear-gradient(135deg, #1f2a4d 0%, #141a30 100%)"
+  const [c1, c2, c3] = colors
+  if (!c3) return `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`
+  return `linear-gradient(135deg, ${c1} 0%, ${c2} 50%, ${c3} 100%)`
 }

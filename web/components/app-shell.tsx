@@ -1,11 +1,13 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
-import { BookOpen, RefreshCw, Repeat2, LogOut } from "lucide-react"
+import { Home, BookOpen, Repeat2, RefreshCw, LogOut, Sun, Moon } from "lucide-react"
+import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 
 interface User {
@@ -15,22 +17,25 @@ interface User {
   avatarUrl: string | null
 }
 
-const NAV_ITEMS = [
-  { href: "/colecao", label: "Coleção", icon: BookOpen },
-  { href: "/repetidas", label: "Repetidas", icon: Repeat2 },
-  { href: "/trocas", label: "Trocas", icon: RefreshCw },
-]
-
-export default function AppShell({
-  children,
-  user,
-}: {
+interface Props {
   children: React.ReactNode
   user: User
-}) {
+  dupesCount?: number
+  matchCount?: number
+}
+
+const NAV_ITEMS = [
+  { href: "/inicio",    label: "Início",   icon: Home },
+  { href: "/colecao",   label: "Coleção",  icon: BookOpen },
+  { href: "/repetidas", label: "Repetidas", icon: Repeat2 },
+  { href: "/trocas",    label: "Trocas",   icon: RefreshCw },
+]
+
+export default function AppShell({ children, user, dupesCount = 0, matchCount = 0 }: Props) {
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
+  const { resolvedTheme, setTheme } = useTheme()
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -39,69 +44,106 @@ export default function AppShell({
   }
 
   const initials = user.fullName
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
+    .split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
 
   return (
-    <div className="min-h-screen bg-[#0A1628] flex">
+    <div
+      className="min-h-screen flex transition-colors duration-300"
+      style={{
+        background: `
+          radial-gradient(1200px 600px at 80% -10%, rgba(255,184,0,0.06), transparent 60%),
+          radial-gradient(900px 500px at -10% 30%, rgba(167,139,250,0.05), transparent 60%),
+          var(--bg-0)
+        `,
+      }}
+    >
       {/* ── Sidebar (desktop) ───────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-64 min-h-screen border-r border-white/10 bg-[#060e1c] fixed left-0 top-0 z-30">
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-          <Image src="/logo_sem_fundo.png" alt="Copa 2026" width={40} height={40} className="object-contain" />
+      <aside
+        className="hidden md:flex flex-col w-64 min-h-screen fixed left-0 top-0 z-30"
+        style={{
+          background: "linear-gradient(180deg, var(--bg-sidebar) 0%, var(--bg-0) 100%)",
+          borderRight: "1px solid var(--line)",
+        }}
+      >
+        {/* Brand */}
+        <div
+          className="flex items-center gap-3 px-5 py-5"
+          style={{ borderBottom: "1px dashed var(--line)", marginBottom: 16 }}
+        >
+          <div
+            style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: "linear-gradient(135deg, var(--gold) 0%, var(--gold-2) 100%)",
+              display: "grid", placeItems: "center",
+              fontFamily: "var(--font-bebas)", fontSize: 22, color: "#1a1300", letterSpacing: "0.04em",
+              boxShadow: "0 8px 24px rgba(255,184,0,0.25)",
+              flexShrink: 0,
+            }}
+          >
+            26
+          </div>
           <div>
-            <p
-              className="text-white font-black text-xl leading-none tracking-wider"
-              style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-            >
-              Copa 2026
+            <p style={{ fontFamily: "var(--font-bebas)", fontSize: 22, letterSpacing: "0.06em", lineHeight: 1, color: "var(--ink-0)" }}>
+              COPA 2026
             </p>
-            <p className="text-[#FFD700]/70 text-xs">Álbum de Figurinhas</p>
+            <p style={{ fontSize: 11, letterSpacing: "0.14em", color: "var(--ink-2)", textTransform: "uppercase", marginTop: 3 }}>
+              Álbum Digital
+            </p>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
+        <nav className="flex flex-col gap-1 px-3 flex-1">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href)
+            const active = pathname === href || (href !== "/inicio" && pathname.startsWith(href))
+            const badge  = href === "/repetidas" ? dupesCount : href === "/trocas" ? matchCount : 0
             return (
               <Link
                 key={href}
                 href={href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150",
-                  active
-                    ? "bg-[#FFD700] text-[#0A1628] font-bold shadow-lg shadow-[#FFD700]/20"
-                    : "text-white/60 hover:text-white hover:bg-white/5"
-                )}
+                className={cn("ds-nav-item", active && "active")}
               >
-                <Icon size={18} />
+                <Icon size={18} style={{ flexShrink: 0, opacity: active ? 1 : 0.7 }} />
                 {label}
+                {badge > 0 && (
+                  <span className="ds-nav-badge">{badge}</span>
+                )}
               </Link>
             )
           })}
         </nav>
 
-        {/* User */}
-        <div className="px-3 py-4 border-t border-white/10">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-xl">
-            <Avatar className="size-9">
+        {/* Footer */}
+        <div className="px-3 py-4">
+          <div
+            className="flex items-center gap-3 p-3 rounded-xl"
+            style={{ border: "1px solid var(--line)" }}
+          >
+            <Avatar className="size-9 rounded-xl" style={{ borderRadius: 10 }}>
               <AvatarImage src={user.avatarUrl ?? undefined} />
-              <AvatarFallback className="bg-[#FFD700]/20 text-[#FFD700] text-xs font-bold">
+              <AvatarFallback
+                style={{ background: "linear-gradient(135deg, #A78BFA, #F472B6)", color: "white", fontWeight: 700, fontSize: 13 }}
+              >
                 {initials}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{user.fullName}</p>
-              <p className="text-white/40 text-xs truncate">{user.email}</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-0)" }} className="truncate">{user.fullName}</p>
+              <p style={{ fontSize: 11, color: "var(--ink-3)" }} className="truncate">{user.email}</p>
             </div>
             <button
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              title={resolvedTheme === "dark" ? "Modo claro" : "Modo escuro"}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: "var(--ink-3)" }}
+            >
+              {resolvedTheme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+            <button
               onClick={handleLogout}
-              className="text-white/30 hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-red-400/10"
               title="Sair"
+              className="p-1.5 rounded-lg transition-colors hover:text-red-400"
+              style={{ color: "var(--ink-3)" }}
             >
               <LogOut size={15} />
             </button>
@@ -110,45 +152,84 @@ export default function AppShell({
       </aside>
 
       {/* ── Main content ────────────────────────────────── */}
-      <main className="flex-1 md:ml-64 pb-20 md:pb-0 min-h-screen">
+      <main className="flex-1 md:ml-64 pb-24 md:pb-0 min-h-screen">
         {/* Mobile header */}
-        <div className="md:hidden flex items-center justify-between px-4 py-4 bg-[#060e1c] border-b border-white/10 sticky top-0 z-20">
-          <div className="flex items-center gap-2">
-            <Image src="/logo_sem_fundo.png" alt="Copa 2026" width={28} height={28} className="object-contain" />
-            <span
-              className="text-white font-black text-lg tracking-wider"
-              style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+        <div
+          className="md:hidden flex items-center justify-between px-4 py-3.5 sticky top-0 z-20"
+          style={{
+            background: "rgba(10,14,26,0.9)",
+            backdropFilter: "blur(12px)",
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              style={{
+                width: 30, height: 30, borderRadius: 8,
+                background: "linear-gradient(135deg, var(--gold), var(--gold-2))",
+                display: "grid", placeItems: "center",
+                fontFamily: "var(--font-bebas)", fontSize: 15, color: "#1a1300",
+              }}
             >
-              Copa 2026
+              26
+            </div>
+            <span style={{ fontFamily: "var(--font-bebas)", fontSize: 18, letterSpacing: "0.06em", color: "var(--ink-0)" }}>
+              COPA 2026
             </span>
           </div>
-          <Avatar className="size-8">
-            <AvatarImage src={user.avatarUrl ?? undefined} />
-            <AvatarFallback className="bg-[#FFD700]/20 text-[#FFD700] text-xs font-bold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="p-1.5 rounded-lg"
+              style={{ color: "var(--ink-3)" }}
+            >
+              {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <Avatar className="size-8" style={{ borderRadius: 8 }}>
+              <AvatarImage src={user.avatarUrl ?? undefined} />
+              <AvatarFallback style={{ background: "linear-gradient(135deg, #A78BFA, #F472B6)", color: "white", fontWeight: 700, fontSize: 12 }}>
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          </div>
         </div>
 
-        <div className="p-4 md:p-8">{children}</div>
+        <div className="p-4 md:p-8 page-enter">{children}</div>
       </main>
 
       {/* ── Bottom nav (mobile) ─────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#060e1c] border-t border-white/10">
-        <div className="flex items-center">
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-30"
+        style={{
+          background: "rgba(10,14,26,0.95)",
+          backdropFilter: "blur(12px)",
+          borderTop: "1px solid var(--line)",
+        }}
+      >
+        <div className="flex items-center px-3 py-2 pb-safe">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href)
+            const active = pathname === href || (href !== "/inicio" && pathname.startsWith(href))
             return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-all duration-150",
-                  active ? "text-[#FFD700]" : "text-white/40 hover:text-white/70"
-                )}
-              >
-                <Icon size={20} strokeWidth={active ? 2.5 : 1.5} />
-                {label}
+              <Link key={href} href={href} className="flex-1 flex flex-col items-center gap-1 py-1 transition-all duration-200">
+                <div
+                  className="flex items-center justify-center w-12 h-8 rounded-xl transition-all duration-200"
+                  style={{
+                    background: active ? "var(--gold)" : "transparent",
+                    boxShadow: active ? "0 4px 16px rgba(255,210,63,0.3)" : "none",
+                  }}
+                >
+                  <Icon
+                    size={18}
+                    strokeWidth={active ? 2.5 : 1.5}
+                    style={{ color: active ? "#1a1300" : "var(--ink-3)" }}
+                  />
+                </div>
+                <span
+                  className="text-[10px] font-medium tracking-wide transition-colors duration-200"
+                  style={{ color: active ? "var(--gold)" : "var(--ink-3)" }}
+                >
+                  {label}
+                </span>
               </Link>
             )
           })}

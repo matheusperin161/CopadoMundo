@@ -5,25 +5,19 @@ export default async function ColecaoPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: collection } = await supabase
-    .from("user_collection")
-    .select("sticker_id")
-    .eq("user_id", user!.id)
+  const [{ data: collection }, { data: duplicates }] = await Promise.all([
+    supabase.from("user_collection").select("sticker_id").eq("user_id", user!.id),
+    supabase.from("user_duplicates").select("sticker_id, quantity").eq("user_id", user!.id),
+  ])
 
   const ownedSet = new Set<string>((collection ?? []).map((r) => r.sticker_id))
+  const dupMap   = new Map<string, number>((duplicates ?? []).map((d) => [d.sticker_id, d.quantity]))
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-4xl font-black text-white" style={{ fontFamily: "var(--font-bebas)", letterSpacing: "0.05em" }}>
-          Minha Coleção
-        </h1>
-        <p className="text-white/40 text-sm mt-1">
-          Clique em uma figurinha para marcar como coletada
-        </p>
-      </div>
-
-      <CollectionGrid userId={user!.id} initialOwned={ownedSet} />
-    </div>
+    <CollectionGrid
+      userId={user!.id}
+      initialOwned={ownedSet}
+      initialDuplicates={dupMap}
+    />
   )
 }

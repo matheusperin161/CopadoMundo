@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next"
 import { Bebas_Neue, DM_Sans } from "next/font/google"
+import Script from "next/script"
 import { Toaster } from "@/components/ui/sonner"
 import PWARegister from "@/components/pwa-register"
+import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
 const bebasNeue = Bebas_Neue({
@@ -45,11 +47,14 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${bebasNeue.variable} ${dmSans.variable} h-full`}>
-<body className={`min-h-full antialiased ${dmSans.className}`} style={{ background: "#0A1628" }}>
-        <PWARegister />
-        {children}
-        <Toaster richColors position="top-right" />
+    <html lang="pt-BR" className={`${bebasNeue.variable} ${dmSans.variable} h-full`} suppressHydrationWarning>
+      <body className={`min-h-full antialiased ${dmSans.className}`} suppressHydrationWarning>
+        <Script id="theme-init" strategy="beforeInteractive">{`(function(){try{var t=localStorage.getItem('copa-theme')||'dark';document.documentElement.classList.add(t)}catch(e){}})()`}</Script>
+        <ThemeProvider>
+          <PWARegister />
+          {children}
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   )

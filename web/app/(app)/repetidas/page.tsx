@@ -14,18 +14,5 @@ export default async function RepétidasPage() {
     (duplicates ?? []).map((d) => [d.sticker_id, d.quantity])
   )
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-4xl font-black text-white" style={{ fontFamily: "var(--font-bebas)", letterSpacing: "0.05em" }}>
-          Figurinhas Repetidas
-        </h1>
-        <p className="text-white/40 text-sm mt-1">
-          Use + e − para controlar quantas repetidas você tem de cada figurinha
-        </p>
-      </div>
-
-      <DuplicatesManager userId={user!.id} initialDuplicates={dupMap} />
-    </div>
-  )
+  return <DuplicatesManager userId={user!.id} initialDuplicates={dupMap} />
 }

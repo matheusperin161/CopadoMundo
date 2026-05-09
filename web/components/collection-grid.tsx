@@ -1,39 +1,49 @@
 "use client"
 
-import { useState, useTransition, useMemo } from "react"
-import { ALL_STICKERS, GROUPS, type Sticker } from "@/lib/data/stickers"
+import { useState, useTransition, useMemo, useCallback } from "react"
+import { ALL_STICKERS, ALL_COUNTRIES, GROUPS, countryGradient, type Sticker } from "@/lib/data/stickers"
 import { createClient } from "@/lib/supabase/client"
-import { Progress } from "@/components/ui/progress"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import CountryFlag from "@/components/country-flag"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Check, Search } from "lucide-react"
+import { Search, Check } from "lucide-react"
 
 type Filter = "all" | "owned" | "missing"
 
 interface Props {
   userId: string
   initialOwned: Set<string>
+  initialDuplicates?: Map<string, number>
 }
 
-function getStickerTypeLabel(type: Sticker["type"]) {
-  if (type === "badge") return "Escudo"
-  if (type === "team_photo") return "Foto Time"
-  if (type === "history") return "História"
-  return "Jogador"
+const MILESTONES = [25, 50, 75, 100]
+
+function fireConfetti(x: number, y: number) {
+  const colors = ["#FFD23F", "#FFB800", "#34D399", "#A78BFA", "#F472B6", "#38BDF8", "#FF6B6B"]
+  const burst = document.createElement("div")
+  burst.style.cssText = `position:fixed;left:${x}px;top:${y}px;pointer-events:none;z-index:9999;`
+  for (let i = 0; i < 24; i++) {
+    const p = document.createElement("div")
+    const angle = Math.random() * Math.PI * 2
+    const dist = 60 + Math.random() * 120
+    p.style.cssText = `position:absolute;width:8px;height:12px;border-radius:2px;background:${colors[i % colors.length]};animation:confetti-burst 1.4s ease-out forwards;animation-delay:${(Math.random() * 0.1).toFixed(2)}s;`
+    p.style.setProperty("--tx", `${Math.cos(angle) * dist}px`)
+    p.style.setProperty("--ty", `${Math.sin(angle) * dist}px`)
+    p.style.setProperty("--tr", `${Math.random() * 720 - 360}deg`)
+    burst.appendChild(p)
+  }
+  document.body.appendChild(burst)
+  setTimeout(() => burst.remove(), 1600)
 }
 
-
-export default function CollectionGrid({ userId, initialOwned }: Props) {
+export default function CollectionGrid({ userId, initialOwned, initialDuplicates }: Props) {
   const [owned, setOwned] = useState<Set<string>>(initialOwned)
+  const [dupes] = useState<Map<string, number>>(initialDuplicates ?? new Map())
   const [filter, setFilter] = useState<Filter>("all")
   const [search, setSearch] = useState("")
   const [pending, startTransition] = useTransition()
   const supabase = createClient()
 
-  async function toggleSticker(stickerId: string) {
+  const toggleSticker = useCallback((stickerId: string, rect: DOMRect) => {
     const isOwned = owned.has(stickerId)
     const next = new Set(owned)
 
@@ -41,200 +51,191 @@ export default function CollectionGrid({ userId, initialOwned }: Props) {
       next.delete(stickerId)
       setOwned(next)
       startTransition(async () => {
-        const { error } = await supabase
-          .from("user_collection")
-          .delete()
-          .eq("user_id", userId)
-          .eq("sticker_id", stickerId)
-        if (error) {
-          setOwned(owned)
-          toast.error("Erro ao atualizar coleção")
-        }
+        const { error } = await supabase.from("user_collection").delete()
+          .eq("user_id", userId).eq("sticker_id", stickerId)
+        if (error) { setOwned(owned); toast.error("Erro ao atualizar coleção") }
       })
     } else {
       next.add(stickerId)
       setOwned(next)
+      fireConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2)
+
+      const prevPct = Math.round((owned.size / ALL_STICKERS.length) * 100)
+      const newPct  = Math.round((next.size  / ALL_STICKERS.length) * 100)
+      const milestone = MILESTONES.find(m => prevPct < m && newPct >= m)
+      if (milestone) {
+        toast.success(`🎉 ${milestone}% completo!`, { duration: 3500 })
+      } else {
+        toast.success("✓ Figurinha colada!", { duration: 1800 })
+      }
+
       startTransition(async () => {
-        const { error } = await supabase
-          .from("user_collection")
+        const { error } = await supabase.from("user_collection")
           .upsert({ user_id: userId, sticker_id: stickerId })
-        if (error) {
-          setOwned(owned)
-          toast.error("Erro ao atualizar coleção")
-        }
+        if (error) { setOwned(owned); toast.error("Erro ao atualizar coleção") }
       })
     }
-  }
+  }, [owned, userId, supabase])
 
-  const totalOwned = owned.size
+  const totalOwned   = owned.size
   const totalStickers = ALL_STICKERS.length
-  const progressPct = Math.round((totalOwned / totalStickers) * 100)
+  const progressPct  = totalStickers ? (totalOwned / totalStickers) * 100 : 0
 
   const sections = useMemo(() => {
-    const result: Array<{
-      key: string
-      label: string
-      iso?: string
-      stickers: Sticker[]
-    }> = []
-
-    // FWC History — sem bandeira de país
-    const fwcStickers = ALL_STICKERS.filter((s) => s.group === "FWC")
-    result.push({ key: "FWC", label: "FIFA World Cup — História", stickers: fwcStickers })
-
-    // Countries by group
+    const result: Array<{ key: string; label: string; flag: string; stickers: Sticker[] }> = []
+    result.push({ key: "FWC", label: "FIFA World Cup — História",  flag: "🏆", stickers: ALL_STICKERS.filter((s) => s.group === "FWC") })
+    result.push({ key: "CC",  label: "Coca-Cola — Estrelas",       flag: "🥤", stickers: ALL_STICKERS.filter((s) => s.group === "CC") })
     for (const [, countries] of Object.entries(GROUPS)) {
       for (const country of countries) {
-        const stickers = ALL_STICKERS.filter((s) => s.countryCode === country.code)
-        result.push({
-          key: country.code,
-          label: country.name,
-          iso: country.iso,
-          stickers,
-        })
+        result.push({ key: country.code, label: country.name, flag: country.flag, stickers: ALL_STICKERS.filter((s) => s.countryCode === country.code) })
       }
     }
-
     return result
   }, [])
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Progress header */}
-      <div className="flex flex-col gap-3 p-5 rounded-2xl border border-white/10 bg-white/5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-white/50 text-xs uppercase tracking-widest">Progresso Total</p>
-            <p className="text-white font-black text-3xl" style={{ fontFamily: "var(--font-bebas)" }}>
-              {totalOwned} <span className="text-white/30 text-xl">/ {totalStickers}</span>
-            </p>
-          </div>
-          <div className="text-5xl font-black leading-none" style={{ fontFamily: "var(--font-bebas)", color: "#FFD700" }}>
-            {progressPct}%
-          </div>
+      {/* Page header */}
+      <div>
+        <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 6 }}>
+          Sua coleção
         </div>
-        <Progress value={progressPct} className="h-2 bg-white/10" />
+        <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
+          Minha <span style={{ color: "var(--gold)" }}>Coleção</span>
+        </h1>
+        <p style={{ color: "var(--ink-2)", marginTop: 8, fontSize: 14 }}>
+          Toque em uma figurinha para colar no álbum. Clique novamente para descolar.
+        </p>
+      </div>
+
+      {/* Progress Hero */}
+      <div className="progress-hero">
+        <div className="ph-row">
+          <div>
+            <div className="ph-label">Progresso Total</div>
+            <div className="ph-count">
+              {totalOwned}<span className="ph-of"> / {totalStickers}</span>
+            </div>
+          </div>
+          <div className="ph-pct">{Math.round(progressPct)}%</div>
+        </div>
+        <div className="bar">
+          <div className="bar-fill" style={{ width: `${progressPct}%` }} />
+        </div>
+        <div className="milestones">
+          {MILESTONES.map((m) => (
+            <div key={m} className={cn("milestone", progressPct >= m && "hit")} style={{ left: `${m}%` }}>
+              <div className="dot" />
+              {m}%
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Search + Filter */}
-      <div className="flex flex-col gap-3">
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-          <Input
-            placeholder="Buscar seleção... ex: Brasil, Argentina, França"
+      <div className="search-row">
+        <div className="search-box">
+          <Search size={15} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+          <input
+            placeholder="Buscar seleção, número ou grupo…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-[#FFD700]/30"
           />
+          <span className="kbd">⌘K</span>
         </div>
-        <div className="flex gap-2">
+        <div className="pills">
           {(["all", "owned", "missing"] as Filter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cn(
-                "px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-150",
-                filter === f
-                  ? "bg-[#FFD700] text-[#0A1628]"
-                  : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10 border border-white/10"
-              )}
-            >
+            <button key={f} className={cn("pill", filter === f && "active")} onClick={() => setFilter(f)}>
               {f === "all" ? "Todas" : f === "owned" ? "✓ Tenho" : "○ Faltam"}
+              <span className="count">
+                {f === "all" ? totalStickers : f === "owned" ? totalOwned : totalStickers - totalOwned}
+              </span>
             </button>
           ))}
         </div>
       </div>
 
       {/* Sections */}
-      {sections.map(({ key, label, iso, stickers }) => {
+      {sections.map(({ key, label, flag, stickers }) => {
         const searchLower = search.toLowerCase()
         const matchesSearch =
           search === "" ||
           label.toLowerCase().includes(searchLower) ||
           key.toLowerCase().includes(searchLower)
-
         if (!matchesSearch) return null
 
         const sectionOwned = stickers.filter((s) => owned.has(s.id)).length
         const visibleStickers = stickers.filter((s) => {
-          if (filter === "owned") return owned.has(s.id)
+          if (filter === "owned")   return owned.has(s.id)
           if (filter === "missing") return !owned.has(s.id)
           return true
         })
-
         if (visibleStickers.length === 0) return null
 
-        const sectionPct = Math.round((sectionOwned / stickers.length) * 100)
+        const sectionPct = stickers.length ? (sectionOwned / stickers.length) * 100 : 0
 
         return (
-          <div key={key} className="flex flex-col gap-3">
-            {/* Section header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {/* Bandeira real via imagem */}
-                {iso ? (
-                  <CountryFlag iso={iso} name={label} size={22} />
-                ) : (
-                  <span className="text-lg">🏆</span>
-                )}
-                <h2 className="text-white font-bold text-sm">{label}</h2>
-                <Badge variant="secondary" className="text-xs bg-white/10 text-white/60 border-0">
-                  {sectionOwned}/{stickers.length}
-                </Badge>
+          <div key={key} className="group-section">
+            <div className="group-head">
+              <div className="group-icon">{flag}</div>
+              <div>
+                <div className="group-title">{label}</div>
+                <div className="group-meta">{sectionOwned} de {stickers.length} coletadas</div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${sectionPct}%`, background: sectionPct === 100 ? "#22c55e" : "#FFD700" }}
-                  />
+              <div className="group-progress">
+                <div className="group-progress-bar">
+                  <div className="group-progress-fill" style={{ width: `${sectionPct}%` }} />
                 </div>
-                <span className="text-white/40 text-xs w-8 text-right">{sectionPct}%</span>
+                <div className="group-progress-pct">{Math.round(sectionPct)}%</div>
               </div>
             </div>
 
-            {/* Sticker grid */}
-            <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-1.5">
+            <div className="stickers-grid">
               {visibleStickers.map((sticker) => {
-                const isOwned = owned.has(sticker.id)
+                const isOwned    = owned.has(sticker.id)
+                const dupeCount  = dupes.get(sticker.id) ?? 0
+                const isSpecial  = sticker.type === "history" && sticker.number === 1
+                const countryInfo = ALL_COUNTRIES.find((c) => c.code === sticker.countryCode)
+
                 return (
                   <button
                     key={sticker.id}
-                    onClick={(e) => {
-                      const el = e.currentTarget
-                      el.classList.add("sticker-pop")
-                      setTimeout(() => el.classList.remove("sticker-pop"), 200)
-                      toggleSticker(sticker.id)
-                    }}
+                    onClick={(e) => toggleSticker(sticker.id, e.currentTarget.getBoundingClientRect())}
                     title={`${sticker.code} — ${sticker.country}`}
+                    disabled={pending}
                     className={cn(
-                      "relative flex flex-col items-center justify-center rounded-lg p-1.5 transition-all duration-150 aspect-[3/4] text-center border select-none",
-                      isOwned
-                        ? "bg-[#FFD700]/15 border-[#FFD700]/40 hover:bg-[#FFD700]/25 shadow-sm shadow-[#FFD700]/10"
-                        : "bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20",
-                      pending && "pointer-events-none"
+                      "sticker-card",
+                      isOwned ? (isSpecial ? "collected special" : "collected") : "empty"
                     )}
+                    style={isOwned
+                      ? { "--country-bg": countryGradient(sticker.countryCode) } as React.CSSProperties
+                      : undefined
+                    }
                   >
-                    {isOwned && (
-                      <div className="absolute top-1 right-1">
-                        <Check size={8} className="text-[#FFD700]" strokeWidth={3} />
-                      </div>
+                    {isOwned && dupeCount > 0 && (
+                      <span className="dupe-badge">×{dupeCount + 1}</span>
+                    )}
+                    {isOwned && dupeCount === 0 && (
+                      <span className="sticker-check">
+                        <Check size={10} strokeWidth={3} />
+                      </span>
                     )}
 
-                    {/* Número */}
-                    <span className={cn("text-sm font-black leading-none", isOwned ? "text-[#FFD700]" : "text-white/40")}>
-                      {sticker.number}
-                    </span>
+                    <div>
+                      <div className="sticker-num">{sticker.number}</div>
+                      <div className="sticker-code">{sticker.countryCode}</div>
+                    </div>
 
-                    {/* Sigla */}
-                    <span className={cn("text-[9px] leading-tight mt-0.5 font-bold", isOwned ? "text-white/80" : "text-white/30")}>
-                      {sticker.countryCode}
-                    </span>
-
-                    {/* Tipo */}
-                    <span className={cn("text-[7px] leading-tight mt-0.5 font-medium", isOwned ? "text-[#FFD700]/60" : "text-white/20")}>
-                      {getStickerTypeLabel(sticker.type)}
-                    </span>
+                    <div className="sticker-country">
+                      {sticker.playerName ? (
+                        <span className="sticker-player">{sticker.playerName}</span>
+                      ) : (
+                        <>
+                          {countryInfo?.flag && <span className="sticker-flag">{countryInfo.flag}</span>}
+                          <span>{sticker.countryCode}</span>
+                        </>
+                      )}
+                    </div>
                   </button>
                 )
               })}
@@ -247,9 +248,9 @@ export default function CollectionGrid({ userId, initialOwned }: Props) {
         const s = search.toLowerCase()
         return !label.toLowerCase().includes(s) && !key.toLowerCase().includes(s)
       }) && (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <span className="text-4xl">🔍</span>
-          <p className="text-white/40">Nenhuma seleção encontrada para &ldquo;{search}&rdquo;</p>
+        <div className="ds-empty">
+          <div className="ds-empty-icon">🔍</div>
+          <div>Nenhuma seleção encontrada para &ldquo;{search}&rdquo;</div>
         </div>
       )}
     </div>
