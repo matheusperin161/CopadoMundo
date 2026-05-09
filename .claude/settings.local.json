@@ -9,7 +9,12 @@
       "Bash(npx shadcn@latest add badge card tabs dialog sheet input textarea sonner separator skeleton avatar progress --yes)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(cat /home/matheus-perin/Documentos/CopadoMundo/CopadoMundo/web/app/\\\\\\(app\\\\\\)/colecao/page.tsx)",
+      "Bash(cat /home/matheus-perin/Documentos/CopadoMundo/CopadoMundo/web/app/\\\\\\(app\\\\\\)/repetidas/page.tsx)",
+      "Bash(node -e ' *)"
     ]
   }
 }

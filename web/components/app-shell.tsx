@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
-import { BookOpen, RefreshCw, Repeat2, LogOut, Trophy } from "lucide-react"
+import { BookOpen, RefreshCw, Repeat2, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface User {
@@ -49,8 +50,8 @@ export default function AppShell({
       {/* ── Sidebar (desktop) ───────────────────────────── */}
       <aside className="hidden md:flex flex-col w-64 min-h-screen border-r border-white/10 bg-[#060e1c] fixed left-0 top-0 z-30">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-6 border-b border-white/10">
-          <Trophy className="text-[#FFD700]" size={26} />
+        <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
+          <Image src="/logo_sem_fundo.png" alt="Copa 2026" width={40} height={40} className="object-contain" />
           <div>
             <p
               className="text-white font-black text-xl leading-none tracking-wider"
@@ -113,7 +114,7 @@ export default function AppShell({
         {/* Mobile header */}
         <div className="md:hidden flex items-center justify-between px-4 py-4 bg-[#060e1c] border-b border-white/10 sticky top-0 z-20">
           <div className="flex items-center gap-2">
-            <Trophy className="text-[#FFD700]" size={20} />
+            <Image src="/logo_sem_fundo.png" alt="Copa 2026" width={28} height={28} className="object-contain" />
             <span
               className="text-white font-black text-lg tracking-wider"
               style={{ fontFamily: "'Bebas Neue', sans-serif" }}

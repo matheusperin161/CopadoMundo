@@ -1,6 +1,7 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
+import Image from "next/image"
 import { useState } from "react"
 
 export const dynamic = "force-dynamic"
@@ -47,9 +48,9 @@ export default function LoginPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#FFD700]/10 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="relative z-10 flex flex-col items-center gap-8 px-6 text-center max-w-md w-full">
-        {/* Trophy icon */}
-        <div className="text-8xl animate-bounce" style={{ animationDuration: "3s" }}>
-          🏆
+        {/* Logo */}
+        <div className="animate-bounce" style={{ animationDuration: "3s" }}>
+          <Image src="/logo_sem_fundo.png" alt="Copa 2026" width={120} height={120} className="object-contain" />
         </div>
 
         {/* Title */}

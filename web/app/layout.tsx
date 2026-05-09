@@ -19,6 +19,11 @@ export const metadata: Metadata = {
   title: "Copa 2026 — Álbum de Figurinhas",
   description: "Gerencie sua coleção de figurinhas da Copa do Mundo 2026. Cadastre suas figurinhas, repetidas e troque com outros colecionadores.",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/logo_sem_fundo.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -41,7 +46,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${bebasNeue.variable} ${dmSans.variable} h-full`}>
-      <body className={`min-h-full antialiased ${dmSans.className}`} style={{ background: "#0A1628" }}>
+<body className={`min-h-full antialiased ${dmSans.className}`} style={{ background: "#0A1628" }}>
         <PWARegister />
         {children}
         <Toaster richColors position="top-right" />

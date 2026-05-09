@@ -201,8 +201,9 @@ export default function CollectionGrid({ userId, initialOwned }: Props) {
                   <button
                     key={sticker.id}
                     onClick={(e) => {
-                      e.currentTarget.classList.add("sticker-pop")
-                      setTimeout(() => e.currentTarget.classList.remove("sticker-pop"), 200)
+                      const el = e.currentTarget
+                      el.classList.add("sticker-pop")
+                      setTimeout(() => el.classList.remove("sticker-pop"), 200)
                       toggleSticker(sticker.id)
                     }}
                     title={`${sticker.code} — ${sticker.country}`}

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { ALL_STICKERS, ALL_COUNTRIES } from "@/lib/data/stickers"
 import { createClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -11,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Plus, RefreshCw, Trash2, Search, ArrowLeftRight } from "lucide-react"
+import { Plus, RefreshCw, Trash2, Search, ArrowLeftRight, Pencil, CheckCircle, RotateCcw } from "lucide-react"
 
 interface Trade {
   id: string
@@ -49,13 +50,72 @@ function StickerPill({ stickerId, label }: { stickerId: string; label: string })
   )
 }
 
+function StickerSearchField({
+  label,
+  placeholder,
+  searchValue,
+  selectedId,
+  onSearchChange,
+  onSelect,
+}: {
+  label: string
+  placeholder: string
+  searchValue: string
+  selectedId: string
+  onSearchChange: (v: string) => void
+  onSelect: (id: string, code: string) => void
+}) {
+  const suggestions = ALL_STICKERS.filter((s) =>
+    searchValue.length >= 2 &&
+    (s.code.toLowerCase().includes(searchValue.toLowerCase()) ||
+      s.country.toLowerCase().includes(searchValue.toLowerCase()))
+  ).slice(0, 6)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-white/60 text-xs uppercase tracking-widest">{label}</label>
+      <div className="relative">
+        <Input
+          placeholder={placeholder}
+          value={searchValue}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+        />
+        {selectedId && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FFD700] text-xs font-bold">✓</span>
+        )}
+      </div>
+      {suggestions.length > 0 && !selectedId && (
+        <div className="flex flex-col rounded-xl border border-white/10 overflow-hidden">
+          {suggestions.map((s) => {
+            const c = ALL_COUNTRIES.find((x) => x.code === s.countryCode)
+            return (
+              <button
+                key={s.id}
+                onClick={() => onSelect(s.id, s.code)}
+                className="flex items-center gap-3 px-3 py-2.5 text-left bg-white/5 hover:bg-white/10 transition-colors border-b border-white/5 last:border-0"
+              >
+                {c?.flag && <span>{c.flag}</span>}
+                <span className="text-white font-bold text-sm">{s.code}</span>
+                <span className="text-white/40 text-xs">{s.country}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TradesBoard({ userId, initialTrades }: Props) {
   const [trades, setTrades] = useState<Trade[]>(initialTrades)
   const [openDialog, setOpenDialog] = useState(false)
+  const [editingTrade, setEditingTrade] = useState<Trade | null>(null)
   const [searchFilter, setSearchFilter] = useState("")
   const [pending, startTransition] = useTransition()
+  const router = useRouter()
 
-  // New trade form
+  // Form state (shared between create and edit)
   const [offeringId, setOfferingId] = useState("")
   const [wantingId, setWantingId] = useState("")
   const [note, setNote] = useState("")
@@ -78,17 +138,27 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
     )
   })
 
-  const offeringSuggestions = ALL_STICKERS.filter((s) =>
-    offeringSearch.length >= 2 &&
-    (s.code.toLowerCase().includes(offeringSearch.toLowerCase()) ||
-      s.country.toLowerCase().includes(offeringSearch.toLowerCase()))
-  ).slice(0, 6)
+  function openCreateDialog() {
+    setEditingTrade(null)
+    setOfferingId("")
+    setWantingId("")
+    setNote("")
+    setOfferingSearch("")
+    setWantingSearch("")
+    setOpenDialog(true)
+  }
 
-  const wantingSuggestions = ALL_STICKERS.filter((s) =>
-    wantingSearch.length >= 2 &&
-    (s.code.toLowerCase().includes(wantingSearch.toLowerCase()) ||
-      s.country.toLowerCase().includes(wantingSearch.toLowerCase()))
-  ).slice(0, 6)
+  function openEditDialog(trade: Trade) {
+    const offeringSticker = ALL_STICKERS.find((s) => s.id === trade.offering_sticker_id)
+    const wantingSticker = ALL_STICKERS.find((s) => s.id === trade.wanting_sticker_id)
+    setEditingTrade(trade)
+    setOfferingId(trade.offering_sticker_id)
+    setWantingId(trade.wanting_sticker_id)
+    setNote(trade.note ?? "")
+    setOfferingSearch(offeringSticker?.code ?? trade.offering_sticker_id)
+    setWantingSearch(wantingSticker?.code ?? trade.wanting_sticker_id)
+    setOpenDialog(true)
+  }
 
   async function handleCreateTrade() {
     if (!offeringId || !wantingId) {
@@ -123,12 +193,41 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
       const newTrade: Trade = { ...inserted, profiles: profile ?? null }
       setTrades([newTrade, ...trades])
       setOpenDialog(false)
-      setOfferingId("")
-      setWantingId("")
-      setNote("")
-      setOfferingSearch("")
-      setWantingSearch("")
+      router.refresh()
       toast.success("Troca publicada!")
+    })
+  }
+
+  async function handleEditTrade() {
+    if (!editingTrade || !offeringId || !wantingId) {
+      toast.error("Selecione as duas figurinhas")
+      return
+    }
+
+    startTransition(async () => {
+      const { error } = await supabase
+        .from("trades")
+        .update({
+          offering_sticker_id: offeringId,
+          wanting_sticker_id: wantingId,
+          note: note || null,
+        })
+        .eq("id", editingTrade.id)
+        .eq("user_id", userId)
+
+      if (error) {
+        toast.error("Erro ao editar troca")
+        return
+      }
+
+      setTrades(trades.map((t) =>
+        t.id === editingTrade.id
+          ? { ...t, offering_sticker_id: offeringId, wanting_sticker_id: wantingId, note: note || null }
+          : t
+      ))
+      setOpenDialog(false)
+      router.refresh()
+      toast.success("Troca atualizada!")
     })
   }
 
@@ -146,7 +245,29 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
       }
 
       setTrades(trades.filter((t) => t.id !== tradeId))
+      router.refresh()
       toast.success("Troca removida")
+    })
+  }
+
+  async function handleToggleStatus(trade: Trade) {
+    const newStatus = trade.status === "open" ? "closed" : "open"
+
+    startTransition(async () => {
+      const { error } = await supabase
+        .from("trades")
+        .update({ status: newStatus })
+        .eq("id", trade.id)
+        .eq("user_id", userId)
+
+      if (error) {
+        toast.error("Erro ao atualizar status")
+        return
+      }
+
+      setTrades(trades.map((t) => t.id === trade.id ? { ...t, status: newStatus } : t))
+      router.refresh()
+      toast.success(newStatus === "closed" ? "Troca marcada como realizada!" : "Troca reaberta!")
     })
   }
 
@@ -164,7 +285,7 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
           />
         </div>
         <button
-          onClick={() => setOpenDialog(true)}
+          onClick={openCreateDialog}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-[#0A1628] text-sm transition-all hover:scale-105 active:scale-95"
           style={{ background: "linear-gradient(135deg, #FFD700, #FFA500)" }}
         >
@@ -186,6 +307,7 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredTrades.map((trade) => {
             const isOwn = trade.user_id === userId
+            const isClosed = trade.status === "closed"
             const initials = (trade.profiles?.full_name ?? "U")
               .split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()
 
@@ -194,7 +316,11 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
                 key={trade.id}
                 className={cn(
                   "flex flex-col gap-4 p-5 rounded-2xl border transition-all",
-                  isOwn ? "border-[#FFD700]/30 bg-[#FFD700]/5" : "border-white/10 bg-white/5 hover:bg-white/[0.08]"
+                  isClosed
+                    ? "border-white/5 bg-white/[0.02] opacity-60"
+                    : isOwn
+                      ? "border-[#FFD700]/30 bg-[#FFD700]/5"
+                      : "border-white/10 bg-white/5 hover:bg-white/[0.08]"
                 )}
               >
                 {/* User */}
@@ -219,7 +345,11 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
                     {isOwn && (
                       <Badge className="bg-[#FFD700]/20 text-[#FFD700] border-0 text-xs">Minha</Badge>
                     )}
-                    <Badge className="bg-green-500/20 text-green-400 border-0 text-xs">Aberta</Badge>
+                    {isClosed ? (
+                      <Badge className="bg-white/10 text-white/40 border-0 text-xs">Realizada</Badge>
+                    ) : (
+                      <Badge className="bg-green-500/20 text-green-400 border-0 text-xs">Aberta</Badge>
+                    )}
                   </div>
                 </div>
 
@@ -241,14 +371,42 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
 
                 {/* Actions */}
                 {isOwn && (
-                  <button
-                    onClick={() => handleDeleteTrade(trade.id)}
-                    disabled={pending}
-                    className="flex items-center gap-2 text-red-400/60 hover:text-red-400 transition-colors text-xs self-end"
-                  >
-                    <Trash2 size={12} />
-                    Remover
-                  </button>
+                  <div className="flex items-center justify-end gap-3">
+                    {!isClosed && (
+                      <button
+                        onClick={() => openEditDialog(trade)}
+                        disabled={pending}
+                        className="flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors text-xs"
+                      >
+                        <Pencil size={12} />
+                        Editar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleToggleStatus(trade)}
+                      disabled={pending}
+                      className={cn(
+                        "flex items-center gap-1.5 transition-colors text-xs",
+                        isClosed
+                          ? "text-blue-400/60 hover:text-blue-400"
+                          : "text-green-400/60 hover:text-green-400"
+                      )}
+                    >
+                      {isClosed ? (
+                        <><RotateCcw size={12} /> Reabrir</>
+                      ) : (
+                        <><CheckCircle size={12} /> Marcar como realizada</>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTrade(trade.id)}
+                      disabled={pending}
+                      className="flex items-center gap-1.5 text-red-400/60 hover:text-red-400 transition-colors text-xs"
+                    >
+                      <Trash2 size={12} />
+                      Remover
+                    </button>
+                  </div>
                 )}
               </div>
             )
@@ -256,83 +414,33 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
         </div>
       )}
 
-      {/* Create trade dialog */}
+      {/* Create / Edit trade dialog */}
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
         <DialogContent className="bg-[#0d1f3c] border-white/10 text-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-white font-black text-2xl" style={{ fontFamily: "var(--font-bebas)", letterSpacing: "0.05em" }}>
-              Publicar Troca
+              {editingTrade ? "Editar Troca" : "Publicar Troca"}
             </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-5 pt-2">
-            {/* Offering sticker */}
-            <div className="flex flex-col gap-2">
-              <label className="text-white/60 text-xs uppercase tracking-widest">Figurinha que ofereço</label>
-              <div className="relative">
-                <Input
-                  placeholder="Buscar ex: BRA 5, Brasil..."
-                  value={offeringSearch}
-                  onChange={(e) => { setOfferingSearch(e.target.value); setOfferingId("") }}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                />
-                {offeringId && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FFD700] text-xs font-bold">✓</span>
-                )}
-              </div>
-              {offeringSuggestions.length > 0 && !offeringId && (
-                <div className="flex flex-col rounded-xl border border-white/10 overflow-hidden">
-                  {offeringSuggestions.map((s) => {
-                    const c = ALL_COUNTRIES.find((x) => x.code === s.countryCode)
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => { setOfferingId(s.id); setOfferingSearch(s.code) }}
-                        className="flex items-center gap-3 px-3 py-2.5 text-left bg-white/5 hover:bg-white/10 transition-colors border-b border-white/5 last:border-0"
-                      >
-                        {c?.flag && <span>{c.flag}</span>}
-                        <span className="text-white font-bold text-sm">{s.code}</span>
-                        <span className="text-white/40 text-xs">{s.country}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            <StickerSearchField
+              label="Figurinha que ofereço"
+              placeholder="Buscar ex: BRA 5, Brasil..."
+              searchValue={offeringSearch}
+              selectedId={offeringId}
+              onSearchChange={(v) => { setOfferingSearch(v); setOfferingId("") }}
+              onSelect={(id, code) => { setOfferingId(id); setOfferingSearch(code) }}
+            />
 
-            {/* Wanting sticker */}
-            <div className="flex flex-col gap-2">
-              <label className="text-white/60 text-xs uppercase tracking-widest">Figurinha que quero</label>
-              <div className="relative">
-                <Input
-                  placeholder="Buscar ex: ARG 10, Argentina..."
-                  value={wantingSearch}
-                  onChange={(e) => { setWantingSearch(e.target.value); setWantingId("") }}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                />
-                {wantingId && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FFD700] text-xs font-bold">✓</span>
-                )}
-              </div>
-              {wantingSuggestions.length > 0 && !wantingId && (
-                <div className="flex flex-col rounded-xl border border-white/10 overflow-hidden">
-                  {wantingSuggestions.map((s) => {
-                    const c = ALL_COUNTRIES.find((x) => x.code === s.countryCode)
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => { setWantingId(s.id); setWantingSearch(s.code) }}
-                        className="flex items-center gap-3 px-3 py-2.5 text-left bg-white/5 hover:bg-white/10 transition-colors border-b border-white/5 last:border-0"
-                      >
-                        {c?.flag && <span>{c.flag}</span>}
-                        <span className="text-white font-bold text-sm">{s.code}</span>
-                        <span className="text-white/40 text-xs">{s.country}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            <StickerSearchField
+              label="Figurinha que quero"
+              placeholder="Buscar ex: ARG 10, Argentina..."
+              searchValue={wantingSearch}
+              selectedId={wantingId}
+              onSearchChange={(v) => { setWantingSearch(v); setWantingId("") }}
+              onSelect={(id, code) => { setWantingId(id); setWantingSearch(code) }}
+            />
 
             {/* Note */}
             <div className="flex flex-col gap-2">
@@ -348,12 +456,12 @@ export default function TradesBoard({ userId, initialTrades }: Props) {
 
             {/* Submit */}
             <button
-              onClick={handleCreateTrade}
+              onClick={editingTrade ? handleEditTrade : handleCreateTrade}
               disabled={pending || !offeringId || !wantingId}
               className="w-full py-3 rounded-xl font-bold text-[#0A1628] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "linear-gradient(135deg, #FFD700, #FFA500)" }}
             >
-              {pending ? "Publicando..." : "Publicar Troca"}
+              {pending ? "Salvando..." : editingTrade ? "Salvar Alterações" : "Publicar Troca"}
             </button>
           </div>
         </DialogContent>

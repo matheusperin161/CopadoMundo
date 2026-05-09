@@ -15,8 +15,8 @@ export default function CountryFlag({ iso, name, size = 24 }: Props) {
     <Image
       src={`https://flagcdn.com/w40/${code}.png`}
       alt={name}
-      width={size}
-      height={Math.round(size * 0.67)}
+      width={40}
+      height={27}
       className="rounded-sm object-cover"
       style={{ width: size, height: "auto" }}
       unoptimized
