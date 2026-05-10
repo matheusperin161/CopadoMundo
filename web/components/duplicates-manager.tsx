@@ -3,6 +3,7 @@
 import { useState, useTransition, useMemo } from "react"
 import { ALL_STICKERS, GROUPS, ALL_COUNTRIES, countryGradient, type Sticker } from "@/lib/data/stickers"
 import { createClient } from "@/lib/supabase/client"
+import { useDupesCount } from "@/components/dupes-count-context"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Search, Minus, Plus, Repeat2 } from "lucide-react"
@@ -18,6 +19,7 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
   const [search, setSearch] = useState("")
   const [, startTransition] = useTransition()
   const supabase = createClient()
+  const { setDupesCount } = useDupesCount()
 
   const totalDupes = useMemo(
     () => Array.from(duplicates.values()).reduce((a, b) => a + b, 0),
@@ -32,6 +34,7 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
     if (next === 0) newMap.delete(stickerId)
     else newMap.set(stickerId, next)
     setDuplicates(newMap)
+    setDupesCount(Array.from(newMap.values()).reduce((a, b) => a + b, 0))
 
     const snapshot = new Map(duplicates)
     startTransition(async () => {

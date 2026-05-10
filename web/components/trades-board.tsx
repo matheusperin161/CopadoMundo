@@ -24,6 +24,7 @@ interface Props {
   userId: string
   initialTrades: Trade[]
   ownedIds?: string[]
+  dupesIds?: string[]
 }
 
 type TradeFilter = "all" | "matches" | "open" | "mine"
@@ -92,7 +93,7 @@ function StickerSearchField({
   )
 }
 
-export default function TradesBoard({ userId, initialTrades, ownedIds = [] }: Props) {
+export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupesIds = [] }: Props) {
   const [trades, setTrades]       = useState<Trade[]>(initialTrades)
   const [filter, setFilter]       = useState<TradeFilter>("all")
   const [searchFilter, setSearch] = useState("")
@@ -109,15 +110,22 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [] }: Pr
 
   const supabase = createClient()
   const ownedSet = useMemo(() => new Set(ownedIds), [ownedIds])
+  const dupesSet = useMemo(() => new Set(dupesIds), [dupesIds])
+
+  const checkMatch = (t: Trade) =>
+    t.user_id !== userId &&
+    t.status === "open" &&
+    dupesSet.has(t.wanting_sticker_id) &&
+    !ownedSet.has(t.offering_sticker_id)
 
   const matchCount = useMemo(
-    () => trades.filter((t) => t.user_id !== userId && t.status === "open" && ownedSet.has(t.wanting_sticker_id)).length,
-    [trades, userId, ownedSet]
+    () => trades.filter(checkMatch).length,
+    [trades, userId, ownedSet, dupesSet]
   )
 
   const filteredTrades = useMemo(() => {
     let list = trades
-    if (filter === "matches") list = list.filter((t) => t.user_id !== userId && t.status === "open" && ownedSet.has(t.wanting_sticker_id))
+    if (filter === "matches") list = list.filter(checkMatch)
     if (filter === "mine")    list = list.filter((t) => t.user_id === userId)
     if (filter === "open")    list = list.filter((t) => t.user_id !== userId && t.status === "open")
     if (searchFilter) {
@@ -251,7 +259,7 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [] }: Pr
           {filteredTrades.map((trade) => {
             const isOwn    = trade.user_id === userId
             const isClosed = trade.status === "closed"
-            const isMatch  = !isOwn && trade.status === "open" && ownedSet.has(trade.wanting_sticker_id)
+            const isMatch  = checkMatch(trade)
 
             const initials = (trade.profiles?.full_name ?? "U")
               .split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()

@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
@@ -8,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { Home, BookOpen, Repeat2, RefreshCw, LogOut, Sun, Moon } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
+import { DupesCountProvider, useDupesCount } from "@/components/dupes-count-context"
 import { cn } from "@/lib/utils"
 
 interface User {
@@ -31,11 +31,12 @@ const NAV_ITEMS = [
   { href: "/trocas",    label: "Trocas",   icon: RefreshCw },
 ]
 
-export default function AppShell({ children, user, dupesCount = 0, matchCount = 0 }: Props) {
+function AppShellInner({ children, user, matchCount }: { children: React.ReactNode; user: User; matchCount: number }) {
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
   const { resolvedTheme, setTheme } = useTheme()
+  const { dupesCount } = useDupesCount()
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -70,18 +71,13 @@ export default function AppShell({ children, user, dupesCount = 0, matchCount = 
           className="flex items-center gap-3 px-5 py-5"
           style={{ borderBottom: "1px dashed var(--line)", marginBottom: 16 }}
         >
-          <div
-            style={{
-              width: 44, height: 44, borderRadius: 12,
-              background: "linear-gradient(135deg, var(--gold) 0%, var(--gold-2) 100%)",
-              display: "grid", placeItems: "center",
-              fontFamily: "var(--font-bebas)", fontSize: 22, color: "#1a1300", letterSpacing: "0.04em",
-              boxShadow: "0 8px 24px rgba(255,184,0,0.25)",
-              flexShrink: 0,
-            }}
-          >
-            26
-          </div>
+          <Image
+            src="/logo_sem_fundo.png"
+            alt="Copa 2026"
+            width={44}
+            height={44}
+            style={{ borderRadius: 10, flexShrink: 0, objectFit: "contain" }}
+          />
           <div>
             <p style={{ fontFamily: "var(--font-bebas)", fontSize: 22, letterSpacing: "0.06em", lineHeight: 1, color: "var(--ink-0)" }}>
               COPA 2026
@@ -163,16 +159,13 @@ export default function AppShell({ children, user, dupesCount = 0, matchCount = 
           }}
         >
           <div className="flex items-center gap-2.5">
-            <div
-              style={{
-                width: 30, height: 30, borderRadius: 8,
-                background: "linear-gradient(135deg, var(--gold), var(--gold-2))",
-                display: "grid", placeItems: "center",
-                fontFamily: "var(--font-bebas)", fontSize: 15, color: "#1a1300",
-              }}
-            >
-              26
-            </div>
+            <Image
+              src="/logo_sem_fundo.png"
+              alt="Copa 2026"
+              width={30}
+              height={30}
+              style={{ borderRadius: 8, objectFit: "contain" }}
+            />
             <span style={{ fontFamily: "var(--font-bebas)", fontSize: 18, letterSpacing: "0.06em", color: "var(--ink-0)" }}>
               COPA 2026
             </span>
@@ -236,5 +229,15 @@ export default function AppShell({ children, user, dupesCount = 0, matchCount = 
         </div>
       </nav>
     </div>
+  )
+}
+
+export default function AppShell({ children, user, dupesCount = 0, matchCount = 0 }: Props) {
+  return (
+    <DupesCountProvider initialCount={dupesCount}>
+      <AppShellInner user={user} matchCount={matchCount}>
+        {children}
+      </AppShellInner>
+    </DupesCountProvider>
   )
 }

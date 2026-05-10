@@ -5,11 +5,12 @@ export default async function TrocasPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ data: trades }, { data: collection }] = await Promise.all([
+  const [{ data: trades }, { data: collection }, { data: duplicates }] = await Promise.all([
     supabase.from("trades").select("*")
       .or(`status.eq.open,user_id.eq.${user!.id}`)
       .order("created_at", { ascending: false }),
     supabase.from("user_collection").select("sticker_id").eq("user_id", user!.id),
+    supabase.from("user_duplicates").select("sticker_id, quantity").eq("user_id", user!.id),
   ])
 
   const tradeList = trades ?? []
@@ -26,12 +27,14 @@ export default async function TrocasPage() {
   }))
 
   const ownedIds = (collection ?? []).map((r) => r.sticker_id)
+  const dupesIds = (duplicates ?? []).filter((d) => d.quantity > 0).map((d) => d.sticker_id)
 
   return (
     <TradesBoard
       userId={user!.id}
       initialTrades={tradesWithProfiles}
       ownedIds={ownedIds}
+      dupesIds={dupesIds}
     />
   )
 }
