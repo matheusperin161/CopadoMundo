@@ -18,7 +18,7 @@ export default async function InicioPage() {
     supabase.from("profiles").select("full_name").eq("id", user.id).single(),
     supabase.from("user_collection").select("sticker_id").eq("user_id", user.id),
     supabase.from("user_duplicates").select("sticker_id, quantity").eq("user_id", user.id),
-    supabase.from("trades").select("*, profiles(full_name, avatar_url)")
+    supabase.from("trades").select("id, user_id, offering_sticker_id, wanting_sticker_id, status")
       .eq("status", "open").neq("user_id", user.id)
       .order("created_at", { ascending: false }).limit(20),
   ])
@@ -30,16 +30,22 @@ export default async function InicioPage() {
 
   const firstName = (profile?.full_name ?? user.email ?? "Usuário").split(" ")[0]
 
-  // Recent stickers (last 6 collected — using last in the array as approximation)
   const recentOwned = ALL_STICKERS.filter((s) => ownedSet.has(s.id)).slice(-6).reverse()
 
-  // Matching trades: they want something I have as dupe AND offer something I don't own
-  const matchingTrades = (trades ?? [])
-    .filter((t: { wanting_sticker_id: string; offering_sticker_id: string }) =>
-      dupesSet.has(t.wanting_sticker_id) && !ownedSet.has(t.offering_sticker_id)
-    )
-    .slice(0, 4)
-    .map((t: { id: string; user_id: string; offering_sticker_id: string; wanting_sticker_id: string; profiles: { full_name: string | null } | null }) => t)
+  const filteredTrades = (trades ?? []).filter((t) =>
+    dupesSet.has(t.wanting_sticker_id) && !ownedSet.has(t.offering_sticker_id)
+  ).slice(0, 4)
+
+  const tradeUserIds = [...new Set(filteredTrades.map((t) => t.user_id as string))]
+  const { data: tradeProfiles } = tradeUserIds.length > 0
+    ? await supabase.from("profiles").select("id, full_name").in("id", tradeUserIds)
+    : { data: [] }
+  const profilesById = Object.fromEntries((tradeProfiles ?? []).map((p) => [p.id, p]))
+
+  const matchingTrades = filteredTrades.map((t) => ({
+    ...t,
+    profiles: (profilesById[t.user_id] as { full_name: string | null } | undefined) ?? null,
+  }))
 
   return (
     <InicioContent
