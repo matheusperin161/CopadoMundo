@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { BookOpen, Repeat2, RefreshCw, Flame } from "lucide-react"
 import { countryGradient, ALL_COUNTRIES, ALL_STICKERS, type Sticker } from "@/lib/data/stickers"
+import CountryFlag from "@/components/country-flag"
 
 interface MatchingTrade {
   id: string
@@ -137,7 +138,10 @@ export default function InicioContent({
                       <div className="sticker-code">{s.countryCode}</div>
                     </div>
                     <div className="sticker-country">
-                      {countryInfo?.flag && <span className="sticker-flag">{countryInfo.flag}</span>}
+                      {countryInfo?.iso
+                        ? <CountryFlag iso={countryInfo.iso} name={s.country} size={16} />
+                        : countryInfo?.flag && <span className="sticker-flag">{countryInfo.flag}</span>
+                      }
                       <span>{s.countryCode}</span>
                     </div>
                   </div>
