@@ -197,7 +197,7 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
               {visibleStickers.map((sticker) => {
                 const isOwned    = owned.has(sticker.id)
                 const dupeCount  = dupes.get(sticker.id) ?? 0
-                const isSpecial  = sticker.type === "history" && sticker.number === 1
+                const isSpecial  = sticker.type === "history" && sticker.number === 1 && sticker.countryCode !== "FWC"
                 const countryInfo = ALL_COUNTRIES.find((c) => c.code === sticker.countryCode)
 
                 return (
