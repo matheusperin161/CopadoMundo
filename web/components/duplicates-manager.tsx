@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react"
 import { ALL_STICKERS, GROUPS, ALL_COUNTRIES, countryGradient, type Sticker } from "@/lib/data/stickers"
+import CountryFlag from "@/components/country-flag"
 import { createClient } from "@/lib/supabase/client"
 import { useDupesCount } from "@/components/dupes-count-context"
 import { cn } from "@/lib/utils"
@@ -65,11 +66,11 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
   }, [search, filter, duplicates])
 
   const byGroup = useMemo(() => {
-    const map = new Map<string, { label: string; flag: string; stickers: Sticker[] }>()
+    const map = new Map<string, { label: string; flag: string; iso?: string; stickers: Sticker[] }>()
     for (const s of filteredStickers) {
       if (!map.has(s.countryCode)) {
         const info = ALL_COUNTRIES.find((c) => c.code === s.countryCode)
-        map.set(s.countryCode, { label: s.country, flag: info?.flag ?? "🏆", stickers: [] })
+        map.set(s.countryCode, { label: s.country, flag: info?.flag ?? "🏆", iso: info?.iso, stickers: [] })
       }
       map.get(s.countryCode)!.stickers.push(s)
     }
@@ -129,10 +130,12 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
       </div>
 
       {/* Groups */}
-      {Array.from(byGroup.entries()).map(([code, { label, flag, stickers }]) => (
+      {Array.from(byGroup.entries()).map(([code, { label, flag, iso, stickers }]) => (
         <div key={code} className="group-section">
           <div className="group-head">
-            <div className="group-icon">{flag}</div>
+            <div className="group-icon">
+              {iso ? <CountryFlag iso={iso} name={label} size={28} /> : flag}
+            </div>
             <div className="group-title">{label}</div>
           </div>
 
@@ -151,8 +154,8 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
 
                   <div className="dupe-info">
                     <div className="dupe-info-t">{sticker.code}</div>
-                    <div className="dupe-info-s">
-                      {flag} {sticker.country}
+                    <div className="dupe-info-s" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      {iso ? <CountryFlag iso={iso} name={label} size={14} /> : flag} {sticker.country}
                     </div>
                   </div>
 
