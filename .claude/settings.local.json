@@ -19,7 +19,8 @@
       "Bash(Select-Object Name, FullName)",
       "PowerShell(Get-ChildItem -Path \"d:\\\\CopadoMundo\\\\CopadoMundo\\\\src\" -Recurse | Where-Object { $_.PSIsContainer } | Select-Object FullName)",
       "PowerShell(tree /f \"d:\\\\CopadoMundo\\\\CopadoMundo\\\\web\\\\app\")",
-      "PowerShell(head -100)"
+      "PowerShell(head -100)",
+      "Bash(del \"d:\\\\CopadoMundo\\\\CopadoMundo\\\\web\\\\middleware.ts\")"
     ]
   }
 }
