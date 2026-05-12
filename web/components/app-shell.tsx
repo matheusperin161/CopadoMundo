@@ -5,9 +5,10 @@ import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
-import { Home, BookOpen, Repeat2, RefreshCw, LogOut, Sun, Moon } from "lucide-react"
+import { Home, BookOpen, Repeat2, RefreshCw, MessageCircle, LogOut, Sun, Moon } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
 import { DupesCountProvider, useDupesCount } from "@/components/dupes-count-context"
+import ChatProvider, { useChatContext } from "@/components/chat-provider"
 import { cn } from "@/lib/utils"
 
 interface User {
@@ -25,10 +26,11 @@ interface Props {
 }
 
 const NAV_ITEMS = [
-  { href: "/inicio",    label: "Início",   icon: Home },
-  { href: "/colecao",   label: "Coleção",  icon: BookOpen },
+  { href: "/inicio",    label: "Início",    icon: Home },
+  { href: "/colecao",   label: "Coleção",   icon: BookOpen },
   { href: "/repetidas", label: "Repetidas", icon: Repeat2 },
-  { href: "/trocas",    label: "Trocas",   icon: RefreshCw },
+  { href: "/trocas",    label: "Trocas",    icon: RefreshCw },
+  { href: "/chat",      label: "Chat",      icon: MessageCircle },
 ]
 
 function AppShellInner({ children, user, matchCount }: { children: React.ReactNode; user: User; matchCount: number }) {
@@ -37,6 +39,7 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
   const supabase = createClient()
   const { resolvedTheme, setTheme } = useTheme()
   const { dupesCount } = useDupesCount()
+  const { unreadCount: chatUnread } = useChatContext()
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -92,7 +95,7 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
         <nav className="flex flex-col gap-1 px-3 flex-1">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || (href !== "/inicio" && pathname.startsWith(href))
-            const badge  = href === "/repetidas" ? dupesCount : href === "/trocas" ? matchCount : 0
+            const badge  = href === "/repetidas" ? dupesCount : href === "/trocas" ? matchCount : href === "/chat" ? chatUnread : 0
             return (
               <Link
                 key={href}
@@ -201,26 +204,22 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
       >
         <div className="flex items-center px-3 py-2 pb-safe">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || (href !== "/inicio" && pathname.startsWith(href))
+            const active     = pathname === href || (href !== "/inicio" && pathname.startsWith(href))
+            const mobileBadge = href === "/repetidas" ? dupesCount : href === "/trocas" ? matchCount : href === "/chat" ? chatUnread : 0
             return (
               <Link key={href} href={href} className="flex-1 flex flex-col items-center gap-1 py-1 transition-all duration-200">
-                <div
-                  className="flex items-center justify-center w-12 h-8 rounded-xl transition-all duration-200"
-                  style={{
-                    background: active ? "var(--gold)" : "transparent",
-                    boxShadow: active ? "0 4px 16px rgba(255,210,63,0.3)" : "none",
-                  }}
+                <div className="relative flex items-center justify-center w-12 h-8 rounded-xl transition-all duration-200"
+                  style={{ background: active ? "var(--gold)" : "transparent", boxShadow: active ? "0 4px 16px rgba(255,210,63,0.3)" : "none" }}
                 >
-                  <Icon
-                    size={18}
-                    strokeWidth={active ? 2.5 : 1.5}
-                    style={{ color: active ? "#1a1300" : "var(--ink-3)" }}
-                  />
+                  <Icon size={18} strokeWidth={active ? 2.5 : 1.5} style={{ color: active ? "#1a1300" : "var(--ink-3)" }} />
+                  {mobileBadge > 0 && (
+                    <span style={{ position: "absolute", top: 0, right: 2, minWidth: 14, height: 14, borderRadius: 999, background: "var(--gold)", color: "#1a1300", fontSize: 9, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 3px" }}>
+                      {mobileBadge}
+                    </span>
+                  )}
                 </div>
-                <span
-                  className="text-[10px] font-medium tracking-wide transition-colors duration-200"
-                  style={{ color: active ? "var(--gold)" : "var(--ink-3)" }}
-                >
+                <span className="text-[10px] font-medium tracking-wide transition-colors duration-200"
+                  style={{ color: active ? "var(--gold)" : "var(--ink-3)" }}>
                   {label}
                 </span>
               </Link>
@@ -235,9 +234,11 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
 export default function AppShell({ children, user, dupesCount = 0, matchCount = 0 }: Props) {
   return (
     <DupesCountProvider initialCount={dupesCount}>
-      <AppShellInner user={user} matchCount={matchCount}>
-        {children}
-      </AppShellInner>
+      <ChatProvider userId={user.id}>
+        <AppShellInner user={user} matchCount={matchCount}>
+          {children}
+        </AppShellInner>
+      </ChatProvider>
     </DupesCountProvider>
   )
 }

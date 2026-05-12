@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { createClient } from "@/lib/supabase/client"
 import { ALL_STICKERS, countryGradient } from "@/lib/data/stickers"
 import { ArrowLeftRight, Send } from "lucide-react"
+import { useChatContext } from "@/components/chat-provider"
 
 interface Message {
   id: string
@@ -36,6 +37,7 @@ export default function TradeChat({
   const [sending, setSending]   = useState(false)
   const bottomRef               = useRef<HTMLDivElement>(null)
   const supabase                = createClient()
+  const { markConversationRead } = useChatContext()
 
   const offeringSticker = ALL_STICKERS.find((s) => s.id === offeringStickerI)
   const wantingSticker  = ALL_STICKERS.find((s) => s.id === wantingStickerI)
@@ -44,6 +46,7 @@ export default function TradeChat({
     if (!open || !proposerId) return
     setLoading(true)
     setMessages([])
+    markConversationRead(tradeId, proposerId)
 
     supabase
       .from("trade_messages")
