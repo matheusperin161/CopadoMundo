@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Search, Check } from "lucide-react"
+import CountryFlag from "@/components/country-flag"
 
 type Filter = "all" | "owned" | "missing"
 
@@ -82,12 +83,12 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
   const progressPct  = totalStickers ? (totalOwned / totalStickers) * 100 : 0
 
   const sections = useMemo(() => {
-    const result: Array<{ key: string; label: string; flag: string; stickers: Sticker[] }> = []
+    const result: Array<{ key: string; label: string; flag: string; iso?: string; stickers: Sticker[] }> = []
     result.push({ key: "FWC", label: "FIFA World Cup — História",  flag: "🏆", stickers: ALL_STICKERS.filter((s) => s.group === "FWC") })
     result.push({ key: "CC",  label: "Coca-Cola — Estrelas",       flag: "🥤", stickers: ALL_STICKERS.filter((s) => s.group === "CC") })
     for (const [, countries] of Object.entries(GROUPS)) {
       for (const country of countries) {
-        result.push({ key: country.code, label: country.name, flag: country.flag, stickers: ALL_STICKERS.filter((s) => s.countryCode === country.code) })
+        result.push({ key: country.code, label: country.name, flag: country.flag, iso: country.iso, stickers: ALL_STICKERS.filter((s) => s.countryCode === country.code) })
       }
     }
     return result
@@ -156,7 +157,7 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
       </div>
 
       {/* Sections */}
-      {sections.map(({ key, label, flag, stickers }) => {
+      {sections.map(({ key, label, flag, iso, stickers }) => {
         const searchLower = search.toLowerCase()
         const matchesSearch =
           search === "" ||
@@ -177,7 +178,9 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
         return (
           <div key={key} className="group-section">
             <div className="group-head">
-              <div className="group-icon">{flag}</div>
+              <div className="group-icon">
+                {iso ? <CountryFlag iso={iso} name={label} size={28} /> : flag}
+              </div>
               <div>
                 <div className="group-title">{label}</div>
                 <div className="group-meta">{sectionOwned} de {stickers.length} coletadas</div>
@@ -231,7 +234,10 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
                         <span className="sticker-player">{sticker.playerName}</span>
                       ) : (
                         <>
-                          {countryInfo?.flag && <span className="sticker-flag">{countryInfo.flag}</span>}
+                          {countryInfo?.iso
+                            ? <CountryFlag iso={countryInfo.iso} name={sticker.country} size={16} />
+                            : countryInfo?.flag && <span className="sticker-flag">{countryInfo.flag}</span>
+                          }
                           <span>{sticker.countryCode}</span>
                         </>
                       )}
