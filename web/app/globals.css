@@ -360,7 +360,7 @@ html.light {
   pointer-events: none;
 }
 .sticker-card.collected.special {
-  background: linear-gradient(135deg, #FFD23F 0%, #FF6B6B 50%, #A78BFA 100%);
+  background: var(--country-bg, linear-gradient(135deg, #FFD23F 0%, #FF6B6B 50%, #A78BFA 100%));
   border-color: rgba(255,255,255,0.3);
 }
 .sticker-card.collected.special::after {
