@@ -1,18 +1,16 @@
-import { createClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
 import DuplicatesManager from "@/components/duplicates-manager"
+import { getCurrentUser, getUserDuplicates } from "@/lib/supabase/queries"
 
 export default async function RepétidasPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
+  if (!user) redirect("/login")
 
-  const { data: duplicates } = await supabase
-    .from("user_duplicates")
-    .select("sticker_id, quantity")
-    .eq("user_id", user!.id)
+  const duplicates = await getUserDuplicates(user.id)
 
   const dupMap = new Map<string, number>(
-    (duplicates ?? []).map((d) => [d.sticker_id, d.quantity])
+    duplicates.map((d) => [d.sticker_id, d.quantity])
   )
 
-  return <DuplicatesManager userId={user!.id} initialDuplicates={dupMap} />
+  return <DuplicatesManager userId={user.id} initialDuplicates={dupMap} />
 }

@@ -14,7 +14,12 @@
       "Bash(cat:*)",
       "Bash(cat /home/matheus-perin/Documentos/CopadoMundo/CopadoMundo/web/app/\\\\\\(app\\\\\\)/colecao/page.tsx)",
       "Bash(cat /home/matheus-perin/Documentos/CopadoMundo/CopadoMundo/web/app/\\\\\\(app\\\\\\)/repetidas/page.tsx)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(Get-ChildItem -Path \"d:\\\\CopadoMundo\\\\CopadoMundo\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\CopadoMundo\\\\CopadoMundo\\\\src\" -Recurse | Where-Object { $_.PSIsContainer } | Select-Object FullName)",
+      "PowerShell(tree /f \"d:\\\\CopadoMundo\\\\CopadoMundo\\\\web\\\\app\")",
+      "PowerShell(head -100)"
     ]
   }
 }
