@@ -2,18 +2,20 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { ALL_STICKERS } from "@/lib/data/stickers"
 import InicioContent from "@/components/inicio-content"
-import { getCurrentUser, getUserProfile, getUserCollection, getUserDuplicates } from "@/lib/supabase/queries"
+import { getCurrentUser, getUserProfile, getUserCollection, getUserDuplicates, getUserCollectionDates } from "@/lib/supabase/queries"
+import { calculateStreak } from "@/lib/utils"
 
 export default async function InicioPage() {
   const user = await getCurrentUser()
   if (!user) redirect("/login")
 
-  // profile, collection, duplicates are cache hits from layout — only trades is a new query
+  // profile, collection, duplicates, dates are cache hits from layout — only trades is a new query
   const supabase = await createClient()
-  const [profile, collection, duplicates, { data: trades }] = await Promise.all([
+  const [profile, collection, duplicates, collectionDates, { data: trades }] = await Promise.all([
     getUserProfile(user.id),
     getUserCollection(user.id),
     getUserDuplicates(user.id),
+    getUserCollectionDates(user.id),
     supabase
       .from("trades")
       .select("id, user_id, offering_sticker_id, wanting_sticker_id, status")
@@ -23,6 +25,7 @@ export default async function InicioPage() {
       .limit(20),
   ])
 
+  const streak     = calculateStreak(collectionDates)
   const ownedIds   = collection.map((r) => r.sticker_id)
   const ownedSet   = new Set(ownedIds)
   const totalDupes = duplicates.reduce((sum, d) => sum + d.quantity, 0)
@@ -54,6 +57,7 @@ export default async function InicioPage() {
       totalStickers={ALL_STICKERS.length}
       totalDupes={totalDupes}
       matchCount={matchingTrades.length}
+      streak={streak}
       recentOwned={recentOwned}
       matchingTrades={matchingTrades}
     />

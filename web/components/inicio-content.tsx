@@ -19,6 +19,7 @@ interface Props {
   totalStickers: number
   totalDupes: number
   matchCount: number
+  streak: number
   recentOwned: Sticker[]
   matchingTrades: MatchingTrade[]
 }
@@ -26,7 +27,7 @@ interface Props {
 const MILESTONES = [25, 50, 75, 100]
 
 export default function InicioContent({
-  firstName, totalOwned, totalStickers, totalDupes, matchCount, recentOwned, matchingTrades,
+  firstName, totalOwned, totalStickers, totalDupes, matchCount, streak, recentOwned, matchingTrades,
 }: Props) {
   const progressPct = totalStickers ? (totalOwned / totalStickers) * 100 : 0
   const missing     = totalStickers - totalOwned
@@ -35,7 +36,7 @@ export default function InicioContent({
     { icon: BookOpen,  color: "gold",    num: totalOwned,  lbl: "Coladas",   sub: "no álbum" },
     { icon: Repeat2,   color: "success", num: totalDupes,  lbl: "Repetidas", sub: "prontas para trocar" },
     { icon: RefreshCw, color: "pink",    num: matchCount,  lbl: "Matches",   sub: "trocas que combinam" },
-    { icon: Flame,     color: "violet",  num: 0,           lbl: "Sequência", sub: "dias colando" },
+    { icon: Flame,     color: "violet",  num: streak,      lbl: "Sequência", sub: "dias colando" },
   ]
 
   return (

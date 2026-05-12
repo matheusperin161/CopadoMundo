@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ALL_STICKERS, ALL_COUNTRIES, countryGradient } from "@/lib/data/stickers"
 import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Plus, Search, ArrowLeftRight, Pencil, CheckCircle, RotateCcw, Trash2, MessageCircle } from "lucide-react"
+import { Plus, Search, ArrowLeftRight, Pencil, CheckCircle, RotateCcw, Trash2, MessageCircle, MapPin, Globe } from "lucide-react"
 import TradeChat from "@/components/trade-chat"
+import { detectCity } from "@/lib/geo"
 
 interface Trade {
   id: string
@@ -18,6 +19,7 @@ interface Trade {
   note: string | null
   status: string
   created_at: string
+  city: string | null
   profiles: { full_name: string | null; avatar_url: string | null } | null
 }
 
@@ -117,6 +119,22 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
   const [offeringSearch, setOfferingSearch] = useState("")
   const [wantingSearch, setWantingSearch]   = useState("")
 
+  // City / location state
+  type GeoState = { city: string; lat: number; lon: number } | null
+  const [userGeo, setUserGeo]     = useState<GeoState>(null)
+  const [cityInput, setCityInput] = useState("")
+  const [cityLat, setCityLat]     = useState<number | null>(null)
+  const [cityLon, setCityLon]     = useState<number | null>(null)
+  const [cityFilter, setCityFilter] = useState<string | null>(null) // null = all cities
+
+  useEffect(() => {
+    detectCity().then((geo) => {
+      if (!geo) return
+      setUserGeo(geo)
+      setCityFilter(geo.city)
+    })
+  }, [])
+
   const supabase = createClient()
   const ownedSet = useMemo(() => new Set(ownedIds), [ownedIds])
   const dupesSet = useMemo(() => new Set(dupesIds), [dupesIds])
@@ -134,6 +152,7 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
 
   const filteredTrades = useMemo(() => {
     let list = trades
+    if (cityFilter) list = list.filter((t) => !t.city || t.city === cityFilter || t.user_id === userId)
     if (filter === "matches") list = list.filter(checkMatch)
     if (filter === "mine")    list = list.filter((t) => t.user_id === userId)
     if (filter === "open")    list = list.filter((t) => t.user_id !== userId && t.status === "open")
@@ -151,11 +170,15 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
       })
     }
     return list
-  }, [trades, filter, searchFilter, userId, ownedSet])
+  }, [trades, filter, searchFilter, userId, ownedSet, cityFilter])
 
   function openCreateDialog() {
     setEditingTrade(null); setOfferingId(""); setWantingId(""); setNote("")
-    setOfferingSearch(""); setWantingSearch(""); setOpenDialog(true)
+    setOfferingSearch(""); setWantingSearch("")
+    setCityInput(userGeo?.city ?? "")
+    setCityLat(userGeo?.lat ?? null)
+    setCityLon(userGeo?.lon ?? null)
+    setOpenDialog(true)
   }
   function openEditDialog(trade: Trade) {
     const o = ALL_STICKERS.find((s) => s.id === trade.offering_sticker_id)
@@ -200,7 +223,16 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
     if (!offeringId || !wantingId) { toast.error("Selecione as duas figurinhas"); return }
     startTransition(async () => {
       const { data: inserted, error } = await supabase.from("trades")
-        .insert({ user_id: userId, offering_sticker_id: offeringId, wanting_sticker_id: wantingId, note: note || null, status: "open" })
+        .insert({
+          user_id: userId,
+          offering_sticker_id: offeringId,
+          wanting_sticker_id: wantingId,
+          note: note || null,
+          status: "open",
+          city: cityInput.trim() || null,
+          city_lat: cityLat,
+          city_lon: cityLon,
+        })
         .select().single()
       if (error) { toast.error("Erro ao criar troca"); return }
       const { data: profile } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", userId).single()
@@ -288,6 +320,26 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
         </button>
       </div>
 
+      {/* City filter */}
+      {userGeo && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setCityFilter(userGeo.city)}
+            className={cn("pill", cityFilter === userGeo.city && "active")}
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <MapPin size={12} /> {userGeo.city}
+          </button>
+          <button
+            onClick={() => setCityFilter(null)}
+            className={cn("pill", cityFilter === null && "active")}
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <Globe size={12} /> Todo o Brasil
+          </button>
+        </div>
+      )}
+
       {/* Trades grid */}
       {filteredTrades.length === 0 ? (
         <div className="ds-empty">
@@ -326,6 +378,7 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
                     <div className="trade-name">{trade.profiles?.full_name ?? "Usuário"}</div>
                     <div className="trade-meta">
                       {new Date(trade.created_at).toLocaleDateString("pt-BR")}
+                      {trade.city && <span style={{ marginLeft: 6, opacity: 0.8 }}><MapPin size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} />{trade.city}</span>}
                     </div>
                   </div>
                   <div className="trade-badges">
@@ -591,6 +644,34 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
                   onBlur={(e) => { e.target.style.borderColor = "var(--line)"; e.target.style.boxShadow = "none" }}
                 />
               </div>
+              {!editingTrade && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <label style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-2)", display: "flex", alignItems: "center", gap: 5 }}>
+                    <MapPin size={12} /> Cidade (opcional)
+                  </label>
+                  <input
+                    placeholder="Ex: São Paulo"
+                    value={cityInput}
+                    onChange={(e) => { setCityInput(e.target.value); setCityLat(null); setCityLon(null) }}
+                    style={{ background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", color: "var(--ink-0)", fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box", transition: "border-color .15s" }}
+                    onFocus={(e) => { e.target.style.borderColor = "var(--line-2)" }}
+                    onBlur={(e)  => { e.target.style.borderColor = "var(--line)"   }}
+                  />
+                  {!cityInput && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const geo = await detectCity()
+                        if (geo) { setCityInput(geo.city); setCityLat(geo.lat); setCityLon(geo.lon) }
+                        else toast.error("Não foi possível detectar a localização")
+                      }}
+                      style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--gold)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0 }}
+                    >
+                      <MapPin size={12} /> Usar minha localização
+                    </button>
+                  )}
+                </div>
+              )}
               <button
                 onClick={editingTrade ? handleEditTrade : handleCreateTrade}
                 disabled={pending || !offeringId || !wantingId}

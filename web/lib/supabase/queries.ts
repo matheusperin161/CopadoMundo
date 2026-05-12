@@ -35,6 +35,16 @@ export const getUserDuplicates = cache(async (userId: string) => {
   return data ?? []
 })
 
+export const getUserCollectionDates = cache(async (userId: string) => {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("user_collection")
+    .select("created_at")
+    .eq("user_id", userId)
+    .not("created_at", "is", null)
+  return (data ?? []).map((r) => r.created_at as string)
+})
+
 // Minimal fields used by the nav badges in layout
 export const getOpenTrades = cache(async (userId: string) => {
   const supabase = await createClient()
