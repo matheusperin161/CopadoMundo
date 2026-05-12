@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ALL_STICKERS, countryGradient } from "@/lib/data/stickers"
 import { ArrowLeftRight } from "lucide-react"
 import TradeChat from "@/components/trade-chat"
@@ -34,13 +34,36 @@ function avatarGradient(s: string) {
   return AVATAR_GRADIENTS[n % AVATAR_GRADIENTS.length]
 }
 
+function isUnread(conv: Conversation, userId: string): boolean {
+  if (conv.lastSenderId === userId) return false
+  try {
+    const v = localStorage.getItem(`chat-read:${conv.tradeId}:${conv.proposerId}`)
+    if (!v) return true
+    return new Date(conv.lastMessageAt) > new Date(v)
+  } catch { return false }
+}
+
 export default function ChatList({ userId, conversations }: Props) {
   const [openConv, setOpenConv] = useState<Conversation | null>(null)
   const { markConversationRead } = useChatContext()
+  // Hydrated client-side so localStorage is available
+  const [unreadSet, setUnreadSet] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const keys = conversations
+      .filter((c) => isUnread(c, userId))
+      .map((c) => `${c.tradeId}:${c.proposerId}`)
+    setUnreadSet(new Set(keys))
+  }, [conversations, userId])
 
   function openChat(conv: Conversation) {
     setOpenConv(conv)
     markConversationRead(conv.tradeId, conv.proposerId)
+    setUnreadSet((prev) => {
+      const next = new Set(prev)
+      next.delete(`${conv.tradeId}:${conv.proposerId}`)
+      return next
+    })
   }
 
   return (
@@ -66,6 +89,8 @@ export default function ChatList({ userId, conversations }: Props) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {conversations.map((conv) => {
+            const key      = `${conv.tradeId}:${conv.proposerId}`
+            const unread   = unreadSet.has(key)
             const offering = ALL_STICKERS.find((s) => s.id === conv.offeringStickerI)
             const wanting  = ALL_STICKERS.find((s) => s.id === conv.wantingStickerI)
             const isMe     = conv.lastSenderId === userId
@@ -73,33 +98,45 @@ export default function ChatList({ userId, conversations }: Props) {
 
             return (
               <button
-                key={`${conv.tradeId}:${conv.proposerId}`}
+                key={key}
                 onClick={() => openChat(conv)}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
-                  padding: "14px 16px", borderRadius: 14,
-                  background: "var(--bg-card)", border: "1px solid var(--line)",
+                  padding: "14px 16px", borderRadius: 14, width: "100%",
+                  background: unread ? "var(--bg-1)" : "var(--bg-card)",
+                  border: `1px solid ${unread ? "rgba(255,210,63,0.35)" : "var(--line)"}`,
+                  borderLeft: unread ? "3px solid var(--gold)" : undefined,
                   cursor: "pointer", fontFamily: "inherit", color: "var(--ink-0)",
-                  textAlign: "left", transition: "border-color .15s", width: "100%",
+                  textAlign: "left", transition: "border-color .15s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--line-2)" }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"   }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = unread ? "rgba(255,210,63,0.6)" : "var(--line-2)" }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = unread ? "rgba(255,210,63,0.35)" : "var(--line)" }}
               >
-                {/* Avatar */}
-                <div style={{
-                  width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
-                  background: avatarGradient(conv.otherUserName),
-                  display: "grid", placeItems: "center",
-                  fontFamily: "var(--font-bebas)", fontSize: 17, color: "white",
-                }}>
-                  {initials}
+                {/* Avatar with unread dot */}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: "50%",
+                    background: avatarGradient(conv.otherUserName),
+                    display: "grid", placeItems: "center",
+                    fontFamily: "var(--font-bebas)", fontSize: 17, color: "white",
+                  }}>
+                    {initials}
+                  </div>
+                  {unread && (
+                    <span style={{
+                      position: "absolute", bottom: 1, right: 1,
+                      width: 11, height: 11, borderRadius: "50%",
+                      background: "var(--gold)", border: "2px solid var(--bg-0)",
+                    }} />
+                  )}
                 </div>
 
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{conv.otherUserName}</div>
+                  <div style={{ fontWeight: unread ? 700 : 600, fontSize: 14, marginBottom: 3, color: unread ? "var(--ink-0)" : "var(--ink-1)" }}>
+                    {conv.otherUserName}
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    {/* Sticker minis */}
                     <div
                       className="trade-mini"
                       style={{ "--country-bg": offering ? countryGradient(offering.countryCode) : undefined, width: 20, height: 28, fontSize: 9, flexShrink: 0 } as React.CSSProperties}
@@ -113,16 +150,28 @@ export default function ChatList({ userId, conversations }: Props) {
                     >
                       {wanting?.number}
                     </div>
-                    <span style={{ fontSize: 12, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {isMe && <span style={{ color: "var(--ink-2)", marginRight: 2 }}>Você:</span>}
+                    <span style={{ fontSize: 12, color: unread ? "var(--ink-1)" : "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: unread ? 500 : 400 }}>
+                      {isMe && <span style={{ color: "var(--ink-3)", marginRight: 2 }}>Você:</span>}
                       {conv.lastMessage}
                     </span>
                   </div>
                 </div>
 
-                {/* Date */}
-                <div style={{ fontSize: 11, color: "var(--ink-3)", flexShrink: 0 }}>
-                  {new Date(conv.lastMessageAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                {/* Date + unread badge */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: unread ? "var(--gold)" : "var(--ink-3)" }}>
+                    {new Date(conv.lastMessageAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                  </span>
+                  {unread && (
+                    <span style={{
+                      minWidth: 18, height: 18, borderRadius: 999,
+                      background: "var(--gold)", color: "#1a1300",
+                      fontSize: 10, fontWeight: 700,
+                      display: "grid", placeItems: "center", padding: "0 4px",
+                    }}>
+                      N
+                    </span>
+                  )}
                 </div>
               </button>
             )
