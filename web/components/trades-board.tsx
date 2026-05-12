@@ -7,7 +7,8 @@ import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Plus, Search, ArrowLeftRight, Pencil, CheckCircle, RotateCcw, Trash2 } from "lucide-react"
+import { Plus, Search, ArrowLeftRight, Pencil, CheckCircle, RotateCcw, Trash2, MessageCircle } from "lucide-react"
+import TradeChat from "@/components/trade-chat"
 
 interface Trade {
   id: string
@@ -102,6 +103,14 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
   const [pending, startTransition]      = useTransition()
   const router = useRouter()
 
+  // Chat state
+  type ChatState = { trade: Trade; proposerId: string; otherName: string }
+  const [chatState, setChatState] = useState<ChatState | null>(null)
+
+  // Proposals list (for trade owner)
+  type ProposalsState = { trade: Trade; proposers: { id: string; name: string }[]; loading: boolean }
+  const [proposalsState, setProposalsState] = useState<ProposalsState | null>(null)
+
   const [offeringId, setOfferingId]         = useState("")
   const [wantingId, setWantingId]           = useState("")
   const [note, setNote]                     = useState("")
@@ -154,6 +163,37 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
     setEditingTrade(trade); setOfferingId(trade.offering_sticker_id); setWantingId(trade.wanting_sticker_id)
     setNote(trade.note ?? ""); setOfferingSearch(o?.code ?? ""); setWantingSearch(w?.code ?? "")
     setOpenDialog(true)
+  }
+
+  function openChat(trade: Trade) {
+    setChatState({
+      trade,
+      proposerId: userId,
+      otherName:  trade.profiles?.full_name ?? "Usuário",
+    })
+  }
+
+  async function openProposals(trade: Trade) {
+    setProposalsState({ trade, proposers: [], loading: true })
+    const { data: msgs } = await supabase
+      .from("trade_messages")
+      .select("proposer_id")
+      .eq("trade_id", trade.id)
+    const ids = [...new Set((msgs ?? []).map((m) => m.proposer_id as string))]
+    if (ids.length === 0) {
+      setProposalsState({ trade, proposers: [], loading: false })
+      return
+    }
+    const { data: profiles } = await supabase
+      .from("profiles").select("id, full_name").in("id", ids)
+    setProposalsState({
+      trade,
+      loading: false,
+      proposers: ids.map((id) => ({
+        id,
+        name: (profiles ?? []).find((p) => p.id === id)?.full_name ?? "Usuário",
+      })),
+    })
   }
 
   async function handleCreateTrade() {
@@ -356,6 +396,9 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
                           <Pencil size={13} /> Editar
                         </button>
                       )}
+                      <button className="ds-btn" onClick={() => openProposals(trade)} disabled={pending}>
+                        <MessageCircle size={13} /> Ver conversas
+                      </button>
                       <button
                         className={cn("ds-btn", isClosed ? "" : "success")}
                         onClick={() => handleToggleStatus(trade)}
@@ -368,11 +411,9 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
                       </button>
                     </>
                   ) : (
-                    <>
-                      <button className="ds-btn primary">
-                        <ArrowLeftRight size={13} /> Propor troca
-                      </button>
-                    </>
+                    <button className="ds-btn primary" onClick={() => !isClosed && openChat(trade)} disabled={isClosed}>
+                      <MessageCircle size={13} /> Propor troca
+                    </button>
                   )}
                 </div>
               </div>
@@ -380,6 +421,73 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
           })}
         </div>
       )}
+
+      {/* Chat */}
+      {chatState && (
+        <TradeChat
+          open={!!chatState}
+          onClose={() => setChatState(null)}
+          tradeId={chatState.trade.id}
+          offeringStickerI={chatState.trade.offering_sticker_id}
+          wantingStickerI={chatState.trade.wanting_sticker_id}
+          currentUserId={userId}
+          otherUserName={chatState.otherName}
+          proposerId={chatState.proposerId}
+        />
+      )}
+
+      {/* Proposals list (trade owner) */}
+      <Dialog open={!!proposalsState} onOpenChange={(v) => !v && setProposalsState(null)}>
+        <DialogContent
+          className="text-white p-0"
+          style={{ background: "var(--bg-card)", border: "1px solid var(--line-2)", borderRadius: 22, maxWidth: 380, width: "calc(100% - 40px)" }}
+        >
+          <div style={{ padding: 28 }}>
+            <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 4 }}>
+              Trocas recebidas
+            </div>
+            <DialogTitle style={{ fontFamily: "var(--font-bebas)", fontSize: 28, letterSpacing: "0.04em", color: "var(--ink-0)", lineHeight: 1, margin: 0, marginBottom: 20 }}>
+              Conversas
+            </DialogTitle>
+
+            {proposalsState?.loading ? (
+              <div style={{ color: "var(--ink-3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Carregando…</div>
+            ) : proposalsState?.proposers.length === 0 ? (
+              <div style={{ color: "var(--ink-3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
+                Nenhuma proposta ainda.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {proposalsState?.proposers.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      if (!proposalsState) return
+                      setProposalsState(null)
+                      setChatState({ trade: proposalsState.trade, proposerId: p.id, otherName: p.name })
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "12px 14px", borderRadius: 12,
+                      background: "var(--bg-1)", border: "1px solid var(--line)",
+                      cursor: "pointer", fontFamily: "inherit", color: "var(--ink-0)",
+                      fontSize: 14, fontWeight: 600, textAlign: "left", transition: "border-color .15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--line-2)" }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"   }}
+                  >
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--gold-soft)", display: "grid", placeItems: "center", color: "var(--gold)", fontFamily: "var(--font-bebas)", fontSize: 16, flexShrink: 0 }}>
+                      {p.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()}
+                    </div>
+                    <span>{p.name}</span>
+                    <MessageCircle size={14} style={{ marginLeft: "auto", color: "var(--ink-3)" }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Create / Edit dialog */}
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
