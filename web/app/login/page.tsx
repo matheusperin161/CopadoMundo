@@ -68,7 +68,7 @@ export default function LoginPage() {
 
         {/* Stats */}
         <div className="animate-fade-up delay-150 flex items-center gap-0 w-full justify-center">
-          {[["985", "figurinhas"], ["48", "seleções"], ["12", "grupos"]].map(([num, label], i) => (
+          {[["994", "figurinhas"], ["48", "seleções"], ["12", "grupos"]].map(([num, label], i) => (
             <div key={label} className="flex items-center">
               <div className="flex flex-col items-center gap-0.5 px-5">
                 <span className="text-2xl font-black text-[#FFD700]" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>{num}</span>
