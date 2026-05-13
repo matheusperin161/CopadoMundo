@@ -57,13 +57,13 @@ export const GROUPS: Record<string, CountryInfo[]> = {
     { name: "Tunísia", code: "TUN", iso: "tn", group: "F", flag: "🇹🇳" },
   ],
   G: [
-    { name: "Bélgica", code: "BEL", iso: "be", group: "G", flag: "🇧🇪" },
-    { name: "Egito",   code: "EGY", iso: "eg", group: "G", flag: "🇪🇬" },
-    { name: "Irã",     code: "IRN", iso: "ir", group: "G", flag: "🇮🇷" },
-    { name: "Espanha", code: "ESP", iso: "es", group: "G", flag: "🇪🇸" },
+    { name: "Bélgica",       code: "BEL", iso: "be", group: "G", flag: "🇧🇪" },
+    { name: "Egito",         code: "EGY", iso: "eg", group: "G", flag: "🇪🇬" },
+    { name: "Irã",           code: "IRN", iso: "ir", group: "G", flag: "🇮🇷" },
+    { name: "Nova Zelândia", code: "NZL", iso: "nz", group: "G", flag: "🇳🇿" },
   ],
   H: [
-    { name: "Nova Zelândia",  code: "NZL", iso: "nz", group: "H", flag: "🇳🇿" },
+    { name: "Espanha",        code: "ESP", iso: "es", group: "H", flag: "🇪🇸" },
     { name: "Cabo Verde",     code: "CPV", iso: "cv", group: "H", flag: "🇨🇻" },
     { name: "Arábia Saudita", code: "KSA", iso: "sa", group: "H", flag: "🇸🇦" },
     { name: "Uruguai",        code: "URU", iso: "uy", group: "H", flag: "🇺🇾" },

@@ -7,13 +7,14 @@ interface Props {
 }
 
 export default function CountryFlag({ iso, name, size = 24 }: Props) {
-  // flagcdn.com suporta códigos ISO como "br", "ar", "gb" etc.
-  // Para subdivisões (gb-sct, gb-eng) usamos o código principal
-  const code = iso.includes("-") ? iso.split("-")[0] : iso
+  // flag-icons (lipis) supports subdivision codes like gb-sct and gb-eng
+  const src = iso.includes("-")
+    ? `https://flagicons.lipis.dev/flags/4x3/${iso}.svg`
+    : `https://flagcdn.com/w40/${iso}.png`
 
   return (
     <Image
-      src={`https://flagcdn.com/w40/${code}.png`}
+      src={src}
       alt={name}
       width={40}
       height={27}
