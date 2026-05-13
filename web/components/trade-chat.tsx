@@ -108,23 +108,29 @@ export default function TradeChat({
           <div style={{ color: "var(--ink-3)", fontSize: 12, marginTop: 2 }}>com {otherUserName}</div>
 
           {/* Sticker summary */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <div
-              className="trade-mini"
-              style={{ "--country-bg": offeringSticker ? countryGradient(offeringSticker.countryCode) : undefined, width: 30, height: 42, fontSize: 11 } as React.CSSProperties}
-            >
-              {offeringSticker?.number}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-3)" }}>oferece</div>
+              <div
+                className="trade-mini"
+                style={{ "--country-bg": offeringSticker ? countryGradient(offeringSticker.countryCode) : "var(--bg-2)", width: 34, height: 48, fontSize: 12 } as React.CSSProperties}
+              >
+                {offeringSticker?.number ?? "?"}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-1)" }}>{offeringSticker?.code}</div>
             </div>
-            <ArrowLeftRight size={11} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-            <div
-              className="trade-mini"
-              style={{ "--country-bg": wantingSticker ? countryGradient(wantingSticker.countryCode) : undefined, width: 30, height: 42, fontSize: 11 } as React.CSSProperties}
-            >
-              {wantingSticker?.number}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--ink-2)", lineHeight: 1.4 }}>
-              <div style={{ fontWeight: 600 }}>{offeringSticker?.code}</div>
-              <div style={{ color: "var(--ink-3)" }}>{wantingSticker?.code}</div>
+
+            <ArrowLeftRight size={13} style={{ color: "var(--ink-3)", flexShrink: 0, marginTop: 8 }} />
+
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-3)" }}>quer</div>
+              <div
+                className="trade-mini"
+                style={{ "--country-bg": wantingSticker ? countryGradient(wantingSticker.countryCode) : "var(--bg-2)", width: 34, height: 48, fontSize: 12 } as React.CSSProperties}
+              >
+                {wantingSticker?.number ?? "?"}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-1)" }}>{wantingSticker?.code}</div>
             </div>
           </div>
         </div>
