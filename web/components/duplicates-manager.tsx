@@ -58,8 +58,9 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
     return ALL_STICKERS.filter((s) => {
       if (filter === "has" && (duplicates.get(s.id) ?? 0) === 0) return false
       if (search) {
-        const q = search.toLowerCase()
-        return s.code.toLowerCase().includes(q) || s.country.toLowerCase().includes(q)
+        const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+        const q = norm(search)
+        return norm(s.code).includes(q) || norm(s.country).includes(q)
       }
       return true
     })

@@ -158,11 +158,12 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
 
       {/* Sections */}
       {sections.map(({ key, label, flag, iso, stickers }) => {
-        const searchLower = search.toLowerCase()
+        const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+        const searchLower = norm(search)
         const matchesSearch =
           search === "" ||
-          label.toLowerCase().includes(searchLower) ||
-          key.toLowerCase().includes(searchLower)
+          norm(label).includes(searchLower) ||
+          norm(key).includes(searchLower)
         if (!matchesSearch) return null
 
         const sectionOwned = stickers.filter((s) => owned.has(s.id)).length
@@ -251,8 +252,9 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
       })}
 
       {search !== "" && sections.every(({ key, label }) => {
-        const s = search.toLowerCase()
-        return !label.toLowerCase().includes(s) && !key.toLowerCase().includes(s)
+        const norm = (v: string) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+        const s = norm(search)
+        return !norm(label).includes(s) && !norm(key).includes(s)
       }) && (
         <div className="ds-empty">
           <div className="ds-empty-icon">🔍</div>

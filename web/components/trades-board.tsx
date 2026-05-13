@@ -50,10 +50,11 @@ function StickerSearchField({
   label: string; placeholder: string; searchValue: string; selectedId: string
   onSearchChange: (v: string) => void; onSelect: (id: string, code: string) => void
 }) {
+  const norm = (v: string) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
   const suggestions = ALL_STICKERS.filter((s) =>
     searchValue.length >= 2 &&
-    (s.code.toLowerCase().includes(searchValue.toLowerCase()) ||
-      s.country.toLowerCase().includes(searchValue.toLowerCase()))
+    (norm(s.code).includes(norm(searchValue)) ||
+      norm(s.country).includes(norm(searchValue)))
   ).slice(0, 6)
 
   return (
@@ -157,15 +158,16 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
     if (filter === "mine")    list = list.filter((t) => t.user_id === userId)
     if (filter === "open")    list = list.filter((t) => t.user_id !== userId && t.status === "open")
     if (searchFilter) {
-      const q = searchFilter.toLowerCase()
-      const offering = (id: string) => ALL_STICKERS.find((x) => x.id === id)
+      const norm = (v: string) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      const q = norm(searchFilter)
+      const getSt = (id: string) => ALL_STICKERS.find((x) => x.id === id)
       list = list.filter((t) => {
-        const o = offering(t.offering_sticker_id)
-        const w = offering(t.wanting_sticker_id)
+        const o = getSt(t.offering_sticker_id)
+        const w = getSt(t.wanting_sticker_id)
         return (
-          o?.code.toLowerCase().includes(q) || o?.country.toLowerCase().includes(q) ||
-          w?.code.toLowerCase().includes(q) || w?.country.toLowerCase().includes(q) ||
-          (t.profiles?.full_name?.toLowerCase().includes(q) ?? false)
+          (o?.code && norm(o.code).includes(q)) || (o?.country && norm(o.country).includes(q)) ||
+          (w?.code && norm(w.code).includes(q)) || (w?.country && norm(w.country).includes(q)) ||
+          (t.profiles?.full_name ? norm(t.profiles.full_name).includes(q) : false)
         )
       })
     }
