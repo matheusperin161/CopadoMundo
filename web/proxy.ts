@@ -23,12 +23,21 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user }, error } = await supabase.auth.getUser()
-
-  if (error?.code === "refresh_token_not_found") {
+  let user = null
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    if (error) {
+      const response = NextResponse.redirect(new URL("/login", request.url))
+      request.cookies.getAll().forEach((c) => {
+        if (c.name.startsWith("sb-")) response.cookies.delete(c.name)
+      })
+      return response
+    }
+    user = data.user
+  } catch {
     const response = NextResponse.redirect(new URL("/login", request.url))
-    request.cookies.getAll().forEach((cookie) => {
-      if (cookie.name.startsWith("sb-")) response.cookies.delete(cookie.name)
+    request.cookies.getAll().forEach((c) => {
+      if (c.name.startsWith("sb-")) response.cookies.delete(c.name)
     })
     return response
   }
