@@ -23,18 +23,12 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  let user = null
-  try {
-    const { data, error } = await supabase.auth.getUser()
-    if (error) {
-      const response = NextResponse.redirect(new URL("/login", request.url))
-      request.cookies.getAll().forEach((c) => {
-        if (c.name.startsWith("sb-")) response.cookies.delete(c.name)
-      })
-      return response
-    }
-    user = data.user
-  } catch {
+  const pathname = request.nextUrl.pathname
+  const isPublic = pathname === "/login" || pathname.startsWith("/auth/")
+
+  const { data: { user }, error } = await supabase.auth.getUser()
+
+  if (!isPublic && error) {
     const response = NextResponse.redirect(new URL("/login", request.url))
     request.cookies.getAll().forEach((c) => {
       if (c.name.startsWith("sb-")) response.cookies.delete(c.name)
@@ -43,13 +37,13 @@ export async function proxy(request: NextRequest) {
   }
 
   const protectedPaths = ["/inicio", "/colecao", "/repetidas", "/trocas", "/chat"]
-  const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p))
+  const isProtected = protectedPaths.some((p) => pathname.startsWith(p))
 
   if (!user && isProtected) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  if (user && request.nextUrl.pathname === "/login") {
+  if (user && pathname === "/login") {
     return NextResponse.redirect(new URL("/inicio", request.url))
   }
 
