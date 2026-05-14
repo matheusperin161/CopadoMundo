@@ -26,9 +26,12 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isPublic = pathname === "/login" || pathname.startsWith("/auth/")
 
+  // Skip auth check entirely for public routes to avoid logging token errors
+  if (isPublic) return supabaseResponse
+
   const { data: { user }, error } = await supabase.auth.getUser()
 
-  if (!isPublic && error) {
+  if (error) {
     const response = NextResponse.redirect(new URL("/login", request.url))
     request.cookies.getAll().forEach((c) => {
       if (c.name.startsWith("sb-")) response.cookies.delete(c.name)
@@ -41,10 +44,6 @@ export async function proxy(request: NextRequest) {
 
   if (!user && isProtected) {
     return NextResponse.redirect(new URL("/login", request.url))
-  }
-
-  if (user && pathname === "/login") {
-    return NextResponse.redirect(new URL("/inicio", request.url))
   }
 
   return supabaseResponse
