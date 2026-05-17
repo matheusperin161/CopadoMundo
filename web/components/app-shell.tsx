@@ -9,6 +9,7 @@ import { Home, BookOpen, Repeat2, RefreshCw, MessageCircle, LogOut, Sun, Moon } 
 import { useTheme } from "@/components/theme-provider"
 import { DupesCountProvider, useDupesCount } from "@/components/dupes-count-context"
 import ChatProvider, { useChatContext } from "@/components/chat-provider"
+import ScrollToTop from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
 
 interface User {
@@ -192,6 +193,8 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
 
         <div className="p-4 md:p-8 page-enter">{children}</div>
       </main>
+
+      <ScrollToTop />
 
       {/* ── Bottom nav (mobile) ─────────────────────────── */}
       <nav
