@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { X, Zap, ZapOff, RotateCcw, Loader2, Check, AlertCircle } from "lucide-react"
 import type { Worker as TesseractWorker } from "tesseract.js"
 import { getStickerById, ALL_STICKERS } from "@/lib/data/stickers"
@@ -215,8 +216,8 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
   const detected = detection !== null
   const borderColor = detected ? "#4ade80" : "#FFD23F"
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black overflow-hidden">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-black overflow-hidden">
       {/* Live camera */}
       <video
         ref={videoRef}
@@ -419,6 +420,7 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
           100% { top: 15%; opacity: 0.3; }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   )
 }
