@@ -48,6 +48,7 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
   const busyRef    = useRef(false)
 
   const [ready,       setReady]       = useState(false)
+  const [analyzing,   setAnalyzing]   = useState(false)
   const [cameraError, setCameraError] = useState(false)
   const [torchOn,     setTorchOn]     = useState(false)
   const [facing,      setFacing]      = useState<"user" | "environment">("environment")
@@ -89,24 +90,26 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
     const video = videoRef.current
     if (video.readyState < 2 || video.videoWidth === 0) return
     busyRef.current = true
+    setAnalyzing(true)
     try {
       const canvas = canvasRef.current
       const ctx = canvas.getContext("2d")!
-      const bw = Math.round(video.videoWidth * 0.65)
-      const bh = Math.round(bw * 0.38)
-      const sx = (video.videoWidth - bw) / 2
-      const sy = video.videoHeight * 0.28
-      canvas.width = bw; canvas.height = bh
-      ctx.drawImage(video, sx, sy, bw, bh, 0, 0, bw, bh)
-      // grayscale + contrast
-      const id = ctx.getImageData(0, 0, bw, bh)
+
+      // Capture full frame scaled to max 900px — avoids coordinate mismatch with visual frame
+      const scale = Math.min(1, 900 / Math.max(video.videoWidth, video.videoHeight))
+      canvas.width  = Math.round(video.videoWidth  * scale)
+      canvas.height = Math.round(video.videoHeight * scale)
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+      // Grayscale only — aggressive contrast destroys printed text
+      const id = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const d = id.data
       for (let i = 0; i < d.length; i += 4) {
         const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
-        const c = Math.min(255, Math.max(0, (g - 128) * 2.2 + 128))
-        d[i] = d[i + 1] = d[i + 2] = c
+        d[i] = d[i + 1] = d[i + 2] = g
       }
       ctx.putImageData(id, 0, 0)
+
       const { data: { text } } = await workerRef.current.recognize(canvas)
       const stickerId = parseStickerCode(text)
       if (stickerId) {
@@ -115,6 +118,7 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
       }
     } finally {
       busyRef.current = false
+      setAnalyzing(false)
     }
   }, [owned])
 
@@ -322,6 +326,11 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
             </div>
           ) : detected ? (
             <p className="text-sm font-semibold" style={{ color: "#4ade80" }}>Figurinha detectada!</p>
+          ) : analyzing ? (
+            <div className="flex items-center justify-center gap-2" style={{ color: "rgba(255,184,0,0.9)" }}>
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-sm font-medium">Analisando…</span>
+            </div>
           ) : (
             <>
               <p className="text-sm" style={{ color: "rgba(255,255,255,0.8)" }}>
