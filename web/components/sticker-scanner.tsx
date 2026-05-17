@@ -66,9 +66,9 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
     stopStream()
     let s: MediaStream
     try {
-      // Try with ideal facingMode first (more permissive than exact)
+      // No resolution hints — they cause telephoto lens selection on multi-camera phones
       s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: mode } },
       })
     } catch {
       // Fallback: any camera
