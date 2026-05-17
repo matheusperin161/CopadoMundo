@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Search, Check } from "lucide-react"
 import CountryFlag from "@/components/country-flag"
+import StickerScanner from "@/components/sticker-scanner"
 
 type Filter = "all" | "owned" | "missing"
 
@@ -38,7 +39,7 @@ function fireConfetti(x: number, y: number) {
 
 export default function CollectionGrid({ userId, initialOwned, initialDuplicates }: Props) {
   const [owned, setOwned] = useState<Set<string>>(initialOwned)
-  const [dupes] = useState<Map<string, number>>(initialDuplicates ?? new Map())
+  const [dupes, setDupes] = useState<Map<string, number>>(initialDuplicates ?? new Map())
   const [filter, setFilter] = useState<Filter>("all")
   const [search, setSearch] = useState("")
   const [pending, startTransition] = useTransition()
@@ -78,6 +79,18 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
     }
   }, [owned, userId, supabase])
 
+  function handleScanCollectionAdd(stickerId: string) {
+    setOwned((prev) => new Set(prev).add(stickerId))
+  }
+
+  function handleScanDuplicateAdd(stickerId: string) {
+    setDupes((prev) => {
+      const next = new Map(prev)
+      next.set(stickerId, (next.get(stickerId) ?? 0) + 1)
+      return next
+    })
+  }
+
   const totalOwned   = owned.size
   const totalStickers = ALL_STICKERS.length
   const progressPct  = totalStickers ? (totalOwned / totalStickers) * 100 : 0
@@ -101,9 +114,19 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
         <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 6 }}>
           Sua coleção
         </div>
-        <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
-          Minha <span style={{ color: "var(--gold)" }}>Coleção</span>
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
+            Minha <span style={{ color: "var(--gold)" }}>Coleção</span>
+          </h1>
+          <div className="mt-2">
+            <StickerScanner
+              userId={userId}
+              owned={owned}
+              onCollectionAdd={handleScanCollectionAdd}
+              onDuplicateAdd={handleScanDuplicateAdd}
+            />
+          </div>
+        </div>
         <p style={{ color: "var(--ink-2)", marginTop: 8, fontSize: 14 }}>
           Toque em uma figurinha para colar no álbum. Clique novamente para descolar.
         </p>
