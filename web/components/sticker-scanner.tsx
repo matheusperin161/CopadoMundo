@@ -46,11 +46,13 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null)
   const busyRef    = useRef(false)
 
-  const [ready,     setReady]     = useState(false)
-  const [torchOn,   setTorchOn]   = useState(false)
-  const [facing,    setFacing]    = useState<"user" | "environment">("environment")
-  const [detection, setDetection] = useState<Detection | null>(null)
-  const [saving,    setSaving]    = useState(false)
+  const [ready,       setReady]       = useState(false)
+  const [cameraError, setCameraError] = useState(false)
+  const [torchOn,     setTorchOn]     = useState(false)
+  const [facing,      setFacing]      = useState<"user" | "environment">("environment")
+  const [detection,   setDetection]   = useState<Detection | null>(null)
+  const [saving,      setSaving]      = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
   /* ── camera ──────────────────────────────────────────── */
@@ -62,11 +64,22 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
 
   const startCamera = useCallback(async (mode: "user" | "environment") => {
     stopStream()
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
-    })
+    let s: MediaStream
+    try {
+      // Try with ideal facingMode first (more permissive than exact)
+      s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+    } catch {
+      // Fallback: any camera
+      s = await navigator.mediaDevices.getUserMedia({ video: true })
+    }
     streamRef.current = s
-    if (videoRef.current) videoRef.current.srcObject = s
+    if (videoRef.current) {
+      videoRef.current.srcObject = s
+      // Explicit play() required on mobile — autoPlay alone is not enough in PWA context
+      await videoRef.current.play().catch(() => {/* iOS may throw but still plays */})
+    }
   }, [stopStream])
 
   /* ── OCR scan frame ───────────────────────────────────── */
@@ -122,7 +135,7 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
       setReady(true)
       startScanning()
     }
-    init().catch(() => toast.error("Não foi possível acessar a câmera"))
+    init().catch(() => { setCameraError(true) })
     return () => {
       cancelled = true
       stopStream()
@@ -181,6 +194,23 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
     dismiss()
   }
 
+  /* ── file fallback (when camera unavailable) ─────────── */
+  async function handleFallbackFile(file: File) {
+    const { createWorker } = await import("tesseract.js")
+    const worker = await createWorker("eng")
+    const url = URL.createObjectURL(file)
+    const { data: { text } } = await worker.recognize(url)
+    await worker.terminate()
+    URL.revokeObjectURL(url)
+    const stickerId = parseStickerCode(text)
+    if (stickerId) {
+      setDetection({ stickerId, isOwned: owned.has(stickerId) })
+      setCameraError(false)
+    } else {
+      toast.error("Não foi possível ler o código. Tente outra foto.")
+    }
+  }
+
   const sticker = detection ? getStickerById(detection.stickerId) : null
   const detected = detection !== null
   const borderColor = detected ? "#4ade80" : "#FFD23F"
@@ -188,8 +218,27 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black overflow-hidden">
       {/* Live camera */}
-      <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="absolute inset-0 w-full h-full object-cover"
+        onCanPlay={() => { /* video is rendering */ }}
+      />
       <canvas ref={canvasRef} className="hidden" />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) handleFallbackFile(f)
+          e.target.value = ""
+        }}
+      />
 
       {/* Dark overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "rgba(0,0,0,0.5)" }} />
@@ -252,7 +301,20 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
 
         {/* Hint */}
         <div className="text-center px-8">
-          {!ready ? (
+          {cameraError ? (
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-sm" style={{ color: "rgba(255,80,80,0.9)" }}>
+                Câmera não disponível
+              </p>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: "var(--gold, #FFD23F)", color: "#1a1300" }}
+              >
+                Tirar foto da figurinha
+              </button>
+            </div>
+          ) : !ready ? (
             <div className="flex items-center justify-center gap-2" style={{ color: "rgba(255,255,255,0.6)" }}>
               <Loader2 size={14} className="animate-spin" />
               <span className="text-sm">Iniciando câmera…</span>
