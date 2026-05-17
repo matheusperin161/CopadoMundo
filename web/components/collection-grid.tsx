@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useTransition, useMemo, useCallback } from "react"
+import { useState, useTransition, useMemo, useCallback, lazy, Suspense } from "react"
 import { ALL_STICKERS, ALL_COUNTRIES, GROUPS, countryGradient, type Sticker } from "@/lib/data/stickers"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Search, Check } from "lucide-react"
+import { Search, Check, ScanLine } from "lucide-react"
 import CountryFlag from "@/components/country-flag"
-import StickerScanner from "@/components/sticker-scanner"
+
+const StickerScannerModal = lazy(() => import("@/components/sticker-scanner"))
 
 type Filter = "all" | "owned" | "missing"
 
@@ -43,6 +44,7 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
   const [filter, setFilter] = useState<Filter>("all")
   const [search, setSearch] = useState("")
   const [pending, startTransition] = useTransition()
+  const [showScanner, setShowScanner] = useState(false)
   const supabase = createClient()
 
   const toggleSticker = useCallback((stickerId: string, rect: DOMRect) => {
@@ -119,12 +121,14 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
             Minha <span style={{ color: "var(--gold)" }}>Coleção</span>
           </h1>
           <div className="mt-2">
-            <StickerScanner
-              userId={userId}
-              owned={owned}
-              onCollectionAdd={handleScanCollectionAdd}
-              onDuplicateAdd={handleScanDuplicateAdd}
-            />
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
+              style={{ background: "var(--gold)", color: "#1a1300" }}
+            >
+              <ScanLine size={16} />
+              Escanear
+            </button>
           </div>
         </div>
         <p style={{ color: "var(--ink-2)", marginTop: 8, fontSize: 14 }}>
@@ -283,6 +287,18 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
           <div className="ds-empty-icon">🔍</div>
           <div>Nenhuma seleção encontrada para &ldquo;{search}&rdquo;</div>
         </div>
+      )}
+
+      {showScanner && (
+        <Suspense fallback={null}>
+          <StickerScannerModal
+            userId={userId}
+            owned={owned}
+            onClose={() => setShowScanner(false)}
+            onCollectionAdd={handleScanCollectionAdd}
+            onDuplicateAdd={handleScanDuplicateAdd}
+          />
+        </Suspense>
       )}
     </div>
   )

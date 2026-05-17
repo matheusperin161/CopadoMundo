@@ -1,61 +1,17 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { Camera, X, Check, AlertCircle, Loader2, ScanLine, Edit2 } from "lucide-react"
-import { ALL_STICKERS, getStickerById } from "@/lib/data/stickers"
+import { useRef, useState, useEffect, useCallback } from "react"
+import { X, Zap, ZapOff, RotateCcw, Loader2, Check, AlertCircle } from "lucide-react"
+import type { Worker as TesseractWorker } from "tesseract.js"
+import { getStickerById, ALL_STICKERS } from "@/lib/data/stickers"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 
-type Phase = "idle" | "scanning" | "confirm" | "saving"
-
-interface Match {
-  stickerId: string
-  isOwned: boolean
-}
-
-interface Props {
-  userId: string
-  owned: Set<string>
-  onCollectionAdd: (stickerId: string) => void
-  onDuplicateAdd: (stickerId: string) => void
-}
-
-// Canvas pre-processing: grayscale + contrast boost for better OCR
-function preprocessToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => {
-      const scale = Math.min(1, 1200 / Math.max(img.width, img.height))
-      const canvas = document.createElement("canvas")
-      canvas.width = img.width * scale
-      canvas.height = img.height * scale
-      const ctx = canvas.getContext("2d")!
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const d = imageData.data
-      for (let i = 0; i < d.length; i += 4) {
-        const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
-        const boosted = Math.min(255, Math.max(0, (gray - 128) * 2 + 128))
-        d[i] = d[i + 1] = d[i + 2] = boosted
-      }
-      ctx.putImageData(imageData, 0, 0)
-      resolve(canvas.toDataURL("image/png"))
-    }
-    img.src = URL.createObjectURL(file)
-  })
-}
-
 const VALID_CODES = new Set(ALL_STICKERS.map((s) => s.countryCode))
 
-function parseOcrText(text: string): Match | null {
+function parseStickerCode(text: string): string | null {
   const upper = text.toUpperCase().replace(/[^A-Z0-9]/g, " ").replace(/\s+/g, " ").trim()
-
-  // Try CODE+NUM patterns: "BRA 5", "BRA5", "FWC 12", "CC 3"
-  const patterns = [
-    /\b([A-Z]{2,3})\s*(\d{1,3})\b/g,
-    /\b(\d{1,3})\s*([A-Z]{2,3})\b/g,
-  ]
-
+  const patterns = [/\b([A-Z]{2,3})\s*(\d{1,3})\b/g, /\b(\d{1,3})\s*([A-Z]{2,3})\b/g]
   for (const pattern of patterns) {
     let match
     pattern.lastIndex = 0
@@ -63,86 +19,152 @@ function parseOcrText(text: string): Match | null {
       const [, a, b] = match
       const isACode = isNaN(Number(a))
       const code = isACode ? a : b
-      const numStr = isACode ? b : a
-      const num = parseInt(numStr, 10)
+      const num = parseInt(isACode ? b : a, 10)
       if (!VALID_CODES.has(code) || isNaN(num) || num < 1) continue
-      const stickerId = `${code}${num}`
-      const sticker = getStickerById(stickerId)
-      if (sticker) return { stickerId, isOwned: false }
+      const id = `${code}${num}`
+      if (getStickerById(id)) return id
     }
   }
   return null
 }
 
-export default function StickerScanner({ userId, owned, onCollectionAdd, onDuplicateAdd }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [phase, setPhase] = useState<Phase>("idle")
-  const [match, setMatch] = useState<Match | null>(null)
-  const [manualCode, setManualCode] = useState("")
-  const [showManual, setShowManual] = useState(false)
+interface Detection { stickerId: string; isOwned: boolean }
+
+interface Props {
+  userId: string
+  owned: Set<string>
+  onClose: () => void
+  onCollectionAdd: (stickerId: string) => void
+  onDuplicateAdd: (stickerId: string) => void
+}
+
+export default function StickerScannerModal({ userId, owned, onClose, onCollectionAdd, onDuplicateAdd }: Props) {
+  const videoRef   = useRef<HTMLVideoElement>(null)
+  const canvasRef  = useRef<HTMLCanvasElement>(null)
+  const workerRef  = useRef<TesseractWorker | null>(null)
+  const streamRef  = useRef<MediaStream | null>(null)
+  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+  const busyRef    = useRef(false)
+
+  const [ready,     setReady]     = useState(false)
+  const [torchOn,   setTorchOn]   = useState(false)
+  const [facing,    setFacing]    = useState<"user" | "environment">("environment")
+  const [detection, setDetection] = useState<Detection | null>(null)
+  const [saving,    setSaving]    = useState(false)
   const supabase = createClient()
 
-  async function handleFile(file: File) {
-    setPhase("scanning")
-    setMatch(null)
-    setShowManual(false)
+  /* ── camera ──────────────────────────────────────────── */
+  const stopStream = useCallback(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+  }, [])
 
+  const startCamera = useCallback(async (mode: "user" | "environment") => {
+    stopStream()
+    const s = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
+    })
+    streamRef.current = s
+    if (videoRef.current) videoRef.current.srcObject = s
+  }, [stopStream])
+
+  /* ── OCR scan frame ───────────────────────────────────── */
+  const scanFrame = useCallback(async () => {
+    if (busyRef.current || !videoRef.current || !canvasRef.current || !workerRef.current) return
+    const video = videoRef.current
+    if (video.readyState < 2 || video.videoWidth === 0) return
+    busyRef.current = true
     try {
-      const dataUrl = await preprocessToDataUrl(file)
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext("2d")!
+      const bw = Math.round(video.videoWidth * 0.65)
+      const bh = Math.round(bw * 0.38)
+      const sx = (video.videoWidth - bw) / 2
+      const sy = video.videoHeight * 0.28
+      canvas.width = bw; canvas.height = bh
+      ctx.drawImage(video, sx, sy, bw, bh, 0, 0, bw, bh)
+      // grayscale + contrast
+      const id = ctx.getImageData(0, 0, bw, bh)
+      const d = id.data
+      for (let i = 0; i < d.length; i += 4) {
+        const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
+        const c = Math.min(255, Math.max(0, (g - 128) * 2.2 + 128))
+        d[i] = d[i + 1] = d[i + 2] = c
+      }
+      ctx.putImageData(id, 0, 0)
+      const { data: { text } } = await workerRef.current.recognize(canvas)
+      const stickerId = parseStickerCode(text)
+      if (stickerId) {
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+        setDetection({ stickerId, isOwned: owned.has(stickerId) })
+      }
+    } finally {
+      busyRef.current = false
+    }
+  }, [owned])
+
+  const startScanning = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(scanFrame, 1800)
+  }, [scanFrame])
+
+  /* ── init ─────────────────────────────────────────────── */
+  useEffect(() => {
+    let cancelled = false
+    async function init() {
+      await startCamera("environment")
+      if (cancelled) return
       const { createWorker } = await import("tesseract.js")
       const worker = await createWorker("eng")
-      const { data: { text } } = await worker.recognize(dataUrl)
-      await worker.terminate()
-
-      const result = parseOcrText(text)
-      if (result) {
-        setMatch({ ...result, isOwned: owned.has(result.stickerId) })
-        setPhase("confirm")
-      } else {
-        setPhase("idle")
-        setShowManual(true)
-        toast.error("Não foi possível ler a figurinha. Tente o modo manual.")
-      }
-    } catch {
-      setPhase("idle")
-      setShowManual(true)
-      toast.error("Erro no scanner. Use o modo manual.")
+      if (cancelled) { worker.terminate(); return }
+      workerRef.current = worker
+      setReady(true)
+      startScanning()
     }
+    init().catch(() => toast.error("Não foi possível acessar a câmera"))
+    return () => {
+      cancelled = true
+      stopStream()
+      workerRef.current?.terminate()
+      workerRef.current = null
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── torch ────────────────────────────────────────────── */
+  async function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks()[0]
+    if (!track) return
+    const next = !torchOn
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] })
+      setTorchOn(next)
+    } catch { toast.error("Flash não disponível") }
   }
 
-  function handleManual() {
-    const upper = manualCode.toUpperCase().trim().replace(/\s+/g, "")
-    const directMatch = getStickerById(upper)
-    if (directMatch) {
-      setMatch({ stickerId: upper, isOwned: owned.has(upper) })
-      setPhase("confirm")
-      setShowManual(false)
-      return
-    }
-    // Try parsing as "BRA5" or "BRA 5"
-    const parsed = parseOcrText(upper)
-    if (parsed) {
-      setMatch({ ...parsed, isOwned: owned.has(parsed.stickerId) })
-      setPhase("confirm")
-      setShowManual(false)
-    } else {
-      toast.error("Código não encontrado. Exemplo: BRA5, FWC12, CC3")
-    }
+  /* ── flip camera ──────────────────────────────────────── */
+  async function flipCamera() {
+    const next = facing === "environment" ? "user" : "environment"
+    setFacing(next)
+    await startCamera(next)
+    if (workerRef.current) startScanning()
   }
 
+  /* ── dismiss detection & resume scan ──────────────────── */
+  function dismiss() {
+    setDetection(null)
+    startScanning()
+  }
+
+  /* ── confirm ──────────────────────────────────────────── */
   async function confirm() {
-    if (!match) return
-    setPhase("saving")
-    const { stickerId, isOwned } = match
-
+    if (!detection) return
+    setSaving(true)
+    const { stickerId, isOwned } = detection
     if (!isOwned) {
       const { error } = await supabase.from("user_collection")
         .upsert({ user_id: userId, sticker_id: stickerId })
-      if (error) {
-        toast.error("Erro ao salvar na coleção")
-        setPhase("confirm")
-        return
-      }
+      if (error) { toast.error("Erro ao salvar"); setSaving(false); return }
       onCollectionAdd(stickerId)
       toast.success("Figurinha colada na coleção!")
     } else {
@@ -150,196 +172,191 @@ export default function StickerScanner({ userId, owned, onCollectionAdd, onDupli
         .select("quantity").eq("user_id", userId).eq("sticker_id", stickerId).single()
       const nextQty = (existing?.quantity ?? 0) + 1
       const { error } = await supabase.from("user_duplicates")
-        .upsert(
-          { user_id: userId, sticker_id: stickerId, quantity: nextQty },
-          { onConflict: "user_id,sticker_id" }
-        )
-      if (error) {
-        toast.error("Erro ao salvar nas repetidas")
-        setPhase("confirm")
-        return
-      }
+        .upsert({ user_id: userId, sticker_id: stickerId, quantity: nextQty }, { onConflict: "user_id,sticker_id" })
+      if (error) { toast.error("Erro ao salvar"); setSaving(false); return }
       onDuplicateAdd(stickerId)
       toast.success("Adicionada às repetidas!")
     }
-
-    setPhase("idle")
-    setMatch(null)
-    setManualCode("")
+    setSaving(false)
+    dismiss()
   }
 
-  function cancel() {
-    setPhase("idle")
-    setMatch(null)
-    setManualCode("")
-    setShowManual(false)
-  }
-
-  const sticker = match ? getStickerById(match.stickerId) : null
+  const sticker = detection ? getStickerById(detection.stickerId) : null
+  const detected = detection !== null
+  const borderColor = detected ? "#4ade80" : "#FFD23F"
 
   return (
-    <>
-      {/* Trigger button */}
-      <button
-        onClick={() => inputRef.current?.click()}
-        disabled={phase === "scanning" || phase === "saving"}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
-        style={{ background: "var(--gold)", color: "#1a1300" }}
-        title="Escanear figurinha"
-      >
-        {phase === "scanning" ? (
-          <Loader2 size={16} className="animate-spin" />
-        ) : (
-          <ScanLine size={16} />
-        )}
-        {phase === "scanning" ? "Lendo..." : "Escanear"}
-      </button>
+    <div className="fixed inset-0 z-50 flex flex-col bg-black overflow-hidden">
+      {/* Live camera */}
+      <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+      <canvas ref={canvasRef} className="hidden" />
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) handleFile(file)
-          e.target.value = ""
-        }}
-      />
+      {/* Dark overlay */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "rgba(0,0,0,0.5)" }} />
 
-      {/* Manual input fallback */}
-      {showManual && phase === "idle" && (
-        <div
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      {/* ── Top bar ─────────────────────────────────────── */}
+      <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-4">
+        <button
+          onClick={onClose}
+          className="size-10 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.55)" }}
         >
-          <div
-            className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
-            style={{ background: "var(--bg-1)", border: "1px solid var(--line)" }}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2" style={{ color: "var(--ink-0)" }}>
-                <Edit2 size={18} style={{ color: "var(--gold)" }} />
-                <span className="font-semibold">Código manual</span>
-              </div>
-              <button onClick={cancel} style={{ color: "var(--ink-3)" }}>
-                <X size={20} />
-              </button>
-            </div>
-            <p style={{ fontSize: 13, color: "var(--ink-2)" }}>
-              Digite o código da figurinha. Ex: <strong>BRA5</strong>, <strong>FWC12</strong>, <strong>CC3</strong>
-            </p>
-            <input
-              autoFocus
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleManual()}
-              placeholder="ex: BRA5"
-              className="px-4 py-3 rounded-xl text-base font-mono uppercase"
+          <X size={20} color="white" />
+        </button>
+        <span className="text-white font-semibold text-base">Scanner de Figurinhas</span>
+        <div className="w-10" />
+      </div>
+
+      {/* ── Scan box ────────────────────────────────────── */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center gap-4 -mt-16">
+        {/* Frame */}
+        <div className="relative" style={{ width: 280, height: 160 }}>
+          {/* corner brackets */}
+          {(["tl","tr","bl","br"] as const).map((c) => (
+            <div key={c} className="absolute w-8 h-8" style={{
+              top:    c[0] === "t" ? 0 : "auto",
+              bottom: c[0] === "b" ? 0 : "auto",
+              left:   c[1] === "l" ? 0 : "auto",
+              right:  c[1] === "r" ? 0 : "auto",
+              borderTop:    c[0] === "t" ? `2.5px solid ${borderColor}` : "none",
+              borderBottom: c[0] === "b" ? `2.5px solid ${borderColor}` : "none",
+              borderLeft:   c[1] === "l" ? `2.5px solid ${borderColor}` : "none",
+              borderRight:  c[1] === "r" ? `2.5px solid ${borderColor}` : "none",
+              borderRadius: `${c[0] === "t" ? "8px" : "0"} ${c[1] === "r" && c[0] === "t" ? "8px" : "0"} ${c[0] === "b" && c[1] === "r" ? "8px" : "0"} ${c[0] === "b" && c[1] === "l" ? "8px" : "0"}`,
+              transition: "border-color 0.3s",
+            }} />
+          ))}
+
+          {/* Scan line */}
+          {!detected && ready && (
+            <div
+              className="absolute left-4 right-4 h-px"
               style={{
-                background: "var(--bg-0)",
-                border: "1px solid var(--line)",
-                color: "var(--ink-0)",
-                outline: "none",
+                background: `linear-gradient(90deg, transparent, ${borderColor}, transparent)`,
+                animation: "scan-sweep 1.8s ease-in-out infinite",
+                top: "50%",
               }}
             />
-            <div className="flex gap-3">
-              <button
-                onClick={cancel}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm"
-                style={{ background: "var(--bg-0)", color: "var(--ink-2)", border: "1px solid var(--line)" }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleManual}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm"
-                style={{ background: "var(--gold)", color: "#1a1300" }}
-              >
-                Buscar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Confirm modal */}
-      {(phase === "confirm" || phase === "saving") && sticker && (
+          {/* Detected check */}
+          {detected && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="rounded-full size-12 flex items-center justify-center"
+                style={{ background: "rgba(74,222,128,0.2)", border: "2px solid #4ade80" }}>
+                <Check size={24} color="#4ade80" strokeWidth={3} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Hint */}
+        <div className="text-center px-8">
+          {!ready ? (
+            <div className="flex items-center justify-center gap-2" style={{ color: "rgba(255,255,255,0.6)" }}>
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-sm">Iniciando câmera…</span>
+            </div>
+          ) : detected ? (
+            <p className="text-sm font-semibold" style={{ color: "#4ade80" }}>Figurinha detectada!</p>
+          ) : (
+            <>
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.8)" }}>
+                Aponte a câmera para o número da figurinha
+              </p>
+              <p className="text-xs mt-1" style={{ color: "rgba(255,184,0,0.85)" }}>
+                Aponte para o verso, onde está o código impresso
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Flash + flip */}
+        {!detected && (
+          <div className="flex items-center gap-12 mt-4">
+            <button onClick={toggleTorch} className="flex flex-col items-center gap-1.5">
+              {torchOn
+                ? <Zap size={26} color="#FFD23F" fill="#FFD23F" />
+                : <ZapOff size={26} color="rgba(255,255,255,0.6)" />}
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>Flash</span>
+            </button>
+            <button onClick={flipCamera} className="flex flex-col items-center gap-1.5">
+              <RotateCcw size={26} color="rgba(255,255,255,0.6)" />
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>Câmera</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Detection bottom sheet ───────────────────────── */}
+      {detected && sticker && (
         <div
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+          className="relative z-10 rounded-t-3xl px-6 pt-3 pb-8 flex flex-col gap-3"
+          style={{ background: "var(--bg-1, #0d1526)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
         >
-          <div
-            className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-5"
-            style={{ background: "var(--bg-1)", border: "1px solid var(--line)" }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-semibold" style={{ color: "var(--ink-0)" }}>Figurinha encontrada</span>
-              <button onClick={cancel} style={{ color: "var(--ink-3)" }}>
-                <X size={20} />
-              </button>
-            </div>
+          <div className="w-10 h-1 rounded-full mx-auto mb-1" style={{ background: "rgba(255,255,255,0.18)" }} />
 
-            {/* Sticker preview */}
-            <div
-              className="rounded-xl p-4 flex items-center gap-4"
-              style={{ background: "var(--bg-0)", border: "1px solid var(--line)" }}
-            >
-              <div
-                className="rounded-xl flex flex-col items-center justify-center size-16 font-bold text-white text-xs gap-0.5"
-                style={{ background: "linear-gradient(135deg, var(--gold), #ff9f00)", color: "#1a1300" }}
-              >
-                <span style={{ fontSize: 20, fontWeight: 800 }}>{sticker.number}</span>
-                <span style={{ fontSize: 10, letterSpacing: "0.1em" }}>{sticker.countryCode}</span>
-              </div>
-              <div>
-                <p style={{ fontWeight: 700, color: "var(--ink-0)" }}>{sticker.country}</p>
-                {sticker.playerName && (
-                  <p style={{ fontSize: 13, color: "var(--ink-2)" }}>{sticker.playerName}</p>
-                )}
-                <div className="flex items-center gap-1.5 mt-2">
-                  {match!.isOwned ? (
-                    <>
-                      <AlertCircle size={14} style={{ color: "#f59e0b" }} />
-                      <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>Já está na coleção → vai para repetidas</span>
-                    </>
-                  ) : (
-                    <>
-                      <Check size={14} style={{ color: "#34d399" }} />
-                      <span style={{ fontSize: 12, color: "#34d399", fontWeight: 600 }}>Nova figurinha → vai para a coleção</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+          <p className="text-center font-bold text-lg text-white">Figurinha Detectada</p>
 
-            <div className="flex gap-3">
-              <button
-                onClick={cancel}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm"
-                style={{ background: "var(--bg-0)", color: "var(--ink-2)", border: "1px solid var(--line)" }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirm}
-                disabled={phase === "saving"}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
-                style={{ background: "var(--gold)", color: "#1a1300" }}
-              >
-                {phase === "saving" ? (
-                  <><Loader2 size={15} className="animate-spin" /> Salvando...</>
-                ) : match!.isOwned ? (
-                  "Adicionar às repetidas"
-                ) : (
-                  "Colar na coleção"
-                )}
-              </button>
-            </div>
+          <p className="text-center font-black" style={{ fontSize: 32, color: "var(--gold, #FFD23F)", letterSpacing: "0.06em" }}>
+            {sticker.countryCode} {sticker.number}
+          </p>
+
+          <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+            {sticker.playerName ?? sticker.country}
+          </p>
+
+          <div className="flex justify-center">
+            {detection!.isOwned ? (
+              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full"
+                style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)" }}>
+                <AlertCircle size={15} color="#f59e0b" />
+                <span style={{ color: "#f59e0b", fontWeight: 700, fontSize: 13 }}>Repetida!</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full"
+                style={{ background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.35)" }}>
+                <Check size={15} color="#34d399" />
+                <span style={{ color: "#34d399", fontWeight: 700, fontSize: 13 }}>Figurinha nova!</span>
+              </div>
+            )}
           </div>
+
+          <p className="text-center text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+            {detection!.isOwned ? "Marcar como repetida" : "Marcar como obtida"}
+          </p>
+
+          <button
+            onClick={confirm}
+            disabled={saving}
+            className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 text-white"
+            style={{ background: "#3b5bdb" }}
+          >
+            {saving && <Loader2 size={17} className="animate-spin" />}
+            Confirmar e continuar
+          </button>
+
+          <button
+            onClick={dismiss}
+            className="w-full py-4 rounded-2xl font-bold text-base"
+            style={{ color: "#3b5bdb", border: "2px solid #3b5bdb", background: "transparent" }}
+          >
+            Não confirmar e continuar
+          </button>
+
+          <button onClick={onClose} className="text-center text-sm py-1" style={{ color: "rgba(255,255,255,0.35)" }}>
+            Finalizar
+          </button>
         </div>
       )}
-    </>
+
+      <style>{`
+        @keyframes scan-sweep {
+          0%   { top: 15%; opacity: 0.3; }
+          50%  { top: 75%; opacity: 1;   }
+          100% { top: 15%; opacity: 0.3; }
+        }
+      `}</style>
+    </div>
   )
 }
