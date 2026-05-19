@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Plus, Search, ArrowLeftRight, Pencil, CheckCircle, RotateCcw, Trash2, MessageCircle, MapPin, Globe } from "lucide-react"
 import TradeChat from "@/components/trade-chat"
+import UserProfileSheet from "@/components/user-profile-sheet"
 import { detectCity } from "@/lib/geo"
 
 interface Trade {
@@ -113,6 +114,10 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
   // Proposals list (for trade owner)
   type ProposalsState = { trade: Trade; proposers: { id: string; name: string }[]; loading: boolean }
   const [proposalsState, setProposalsState] = useState<ProposalsState | null>(null)
+
+  // User profile sheet
+  type ProfileState = { userId: string; name: string }
+  const [profileState, setProfileState] = useState<ProfileState | null>(null)
 
   const [offeringId, setOfferingId]         = useState("")
   const [wantingId, setWantingId]           = useState("")
@@ -370,19 +375,33 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
               >
                 {/* Header */}
                 <div className="trade-head">
-                  <div
-                    className="trade-av"
-                    style={{ background: avatarGradient(trade.user_id) }}
+                  <button
+                    onClick={() => !isOwn && setProfileState({ userId: trade.user_id, name: trade.profiles?.full_name ?? "Usuário" })}
+                    disabled={isOwn}
+                    style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, background: "none", border: "none", cursor: isOwn ? "default" : "pointer", padding: 0, fontFamily: "inherit", textAlign: "left" }}
                   >
-                    {initials}
-                  </div>
-                  <div>
-                    <div className="trade-name">{trade.profiles?.full_name ?? "Usuário"}</div>
-                    <div className="trade-meta">
-                      {new Date(trade.created_at).toLocaleDateString("pt-BR")}
-                      {trade.city && <span style={{ marginLeft: 6, opacity: 0.8 }}><MapPin size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} />{trade.city}</span>}
+                    <div
+                      className="trade-av"
+                      style={{
+                        background: avatarGradient(trade.user_id),
+                        outline: !isOwn ? "2px solid transparent" : undefined,
+                        transition: "outline-color .15s",
+                      }}
+                      onMouseEnter={(e) => { if (!isOwn) (e.currentTarget as HTMLElement).style.outlineColor = "rgba(255,210,63,0.5)" }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "transparent" }}
+                    >
+                      {initials}
                     </div>
-                  </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="trade-name" style={!isOwn ? { color: "var(--gold)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 } : {}}>
+                        {trade.profiles?.full_name ?? "Usuário"}
+                      </div>
+                      <div className="trade-meta">
+                        {new Date(trade.created_at).toLocaleDateString("pt-BR")}
+                        {trade.city && <span style={{ marginLeft: 6, opacity: 0.8 }}><MapPin size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 2 }} />{trade.city}</span>}
+                      </div>
+                    </div>
+                  </button>
                   <div className="trade-badges">
                     {isOwn && <span className="trade-status mine">Minha</span>}
                     <span className={cn("trade-status", isClosed ? "closed" : "open")}>
@@ -475,6 +494,16 @@ export default function TradesBoard({ userId, initialTrades, ownedIds = [], dupe
             )
           })}
         </div>
+      )}
+
+      {/* User profile sheet */}
+      {profileState && (
+        <UserProfileSheet
+          targetUserId={profileState.userId}
+          targetName={profileState.name}
+          currentOwnedSet={ownedSet}
+          onClose={() => setProfileState(null)}
+        />
       )}
 
       {/* Chat */}

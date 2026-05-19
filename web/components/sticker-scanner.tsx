@@ -25,14 +25,41 @@ function parse(text: string): string | null {
 }
 
 /* ── canvas helpers ───────────────────────────────────────── */
-function drawGray(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxPx = 700) {
-  const scale = Math.min(1, maxPx / Math.max(video.videoWidth, video.videoHeight))
-  canvas.width  = Math.round(video.videoWidth  * scale)
-  canvas.height = Math.round(video.videoHeight * scale)
+function drawGrayFromFrame(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+  frameRect: DOMRect
+) {
+  const vw = video.videoWidth
+  const vh = video.videoHeight
+  const screenW = window.innerWidth
+  const screenH = window.innerHeight
+
+  // object-cover: video fills the screen, excess cropped
+  const scale = Math.max(screenW / vw, screenH / vh)
+  const displayW = vw * scale
+  const displayH = vh * scale
+  const offsetX = (displayW - screenW) / 2
+  const offsetY = (displayH - screenH) / 2
+
+  // Map frame rect (screen coords) → video natural coords
+  const vidX = Math.round((frameRect.left + offsetX) / scale)
+  const vidY = Math.round((frameRect.top  + offsetY) / scale)
+  const vidW = Math.round(frameRect.width  / scale)
+  const vidH = Math.round(frameRect.height / scale)
+
+  const sx = Math.max(0, vidX)
+  const sy = Math.max(0, vidY)
+  const sw = Math.min(vw - sx, vidW)
+  const sh = Math.min(vh - sy, vidH)
+
+  canvas.width  = Math.max(1, sw)
+  canvas.height = Math.max(1, sh)
   const ctx = canvas.getContext("2d")!
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
+
   const id = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const d = id.data
+  const d  = id.data
   for (let i = 0; i < d.length; i += 4) {
     const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
     d[i] = d[i + 1] = d[i + 2] = g
@@ -53,9 +80,10 @@ interface Props {
 export default function StickerScannerModal({ userId, owned, onClose, onCollectionAdd, onDuplicateAdd }: Props) {
   const videoRef    = useRef<HTMLVideoElement>(null)
   const canvasRef   = useRef<HTMLCanvasElement>(null)
+  const frameRef    = useRef<HTMLDivElement>(null)        // ref to the scan frame div
   const streamRef   = useRef<MediaStream | null>(null)
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
-  const scanningRef = useRef(false)          // prevents overlapping scans
+  const scanningRef = useRef(false)
   const fileRef     = useRef<HTMLInputElement>(null)
 
   const [ready,       setReady]       = useState(false)
@@ -66,7 +94,7 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
   const [saving,      setSaving]      = useState(false)
   const [manualInput, setManualInput] = useState(false)
   const [manualCode,  setManualCode]  = useState("")
-  const [pulse,       setPulse]       = useState(false)   // visual feedback while scanning
+  const [pulse,       setPulse]       = useState(false)
   const supabase = createClient()
 
   /* ── camera ─────────────────────────────────────────────── */
@@ -85,27 +113,30 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
     if (videoRef.current) { videoRef.current.srcObject = s; await videoRef.current.play().catch(()=>{}) }
   }, [stopStream])
 
-  /* ── one scan attempt — returns detected stickerId or null ─ */
+  /* ── one scan attempt ────────────────────────────────────── */
   const tryScan = useCallback(async (): Promise<string | null> => {
-    const video = videoRef.current
+    const video  = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas || video.readyState < 2 || video.videoWidth === 0) return null
+    const frame  = frameRef.current
+    if (!video || !canvas || !frame || video.readyState < 2 || video.videoWidth === 0) return null
 
-    // 1. Native TextDetector (Chrome 74+ Android — instant)
+    // Crop canvas to exactly what the frame box shows
+    const rect = frame.getBoundingClientRect()
+    drawGrayFromFrame(video, canvas, rect)
+
+    // 1. Native TextDetector on the cropped canvas (Chrome 74+ Android — instant)
     if ("TextDetector" in window) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const det = new (window as any).TextDetector()
-        const blocks: Array<{ rawValue: string }> = await det.detect(video)
+        const blocks: Array<{ rawValue: string }> = await det.detect(canvas)
         for (const b of blocks) { const id = parse(b.rawValue); if (id) return id }
         return null
       } catch { /* fall through to Tesseract */ }
     }
 
-    // 2. Tesseract.js with 5-second hard timeout and fresh worker each call
-    drawGray(video, canvas)
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85)
-
+    // 2. Tesseract.js with 5-second hard timeout — fresh worker each call
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.88)
     const { createWorker } = await import("tesseract.js")
     const worker = await createWorker("eng")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,21 +145,19 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
       tessedit_pageseg_mode: "11",
     })
 
-    const timeout  = new Promise<null>((res) => setTimeout(() => res(null), 5000))
-    const ocr      = worker.recognize(dataUrl)
+    const timeout = new Promise<null>((res) => setTimeout(() => res(null), 5000))
+    const ocr     = worker.recognize(dataUrl)
       .then(({ data: { text } }) => parse(text))
       .catch(() => null)
 
     const result = await Promise.race([ocr, timeout])
-    worker.terminate()   // always terminate — fresh worker each time avoids hangs
+    worker.terminate()
     return result
   }, [])
 
   /* ── scan loop ───────────────────────────────────────────── */
   const startLoop = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
-
-    // Choose interval: TextDetector is instant (700ms), Tesseract is slower (2.5s)
     const interval = "TextDetector" in window ? 700 : 2500
 
     timerRef.current = setInterval(async () => {
@@ -154,7 +183,6 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
     return () => { cancelled = true; stopStream() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* restart loop after a detection is dismissed */
   useEffect(() => {
     if (ready && !detection) startLoop()
   }, [detection, ready]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -217,20 +245,16 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
 
   const sticker     = detection ? getStickerById(detection.stickerId) : null
   const detected    = !!detection
-  const borderColor = detected ? "#4ade80" : pulse ? "rgba(255,210,63,0.5)" : "#FFD23F"
+  const frameColor  = detected ? "#4ade80" : pulse ? "rgba(255,210,63,0.9)" : "#FFD23F"
 
   /* ── render ──────────────────────────────────────────────── */
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
-      {/* pointer-events-none prevents video from blocking touches */}
       <video ref={videoRef} autoPlay playsInline muted
         className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
       <canvas ref={canvasRef} className="hidden" />
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = "" }} />
-
-      {/* overlay */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: "rgba(0,0,0,0.42)" }} />
 
       {/* ── top bar ─────────────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-between px-5 pt-14 pb-4">
@@ -248,41 +272,64 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
       </div>
 
       {/* ── center ──────────────────────────────────────── */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center gap-6">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center gap-5">
 
-        {/* scan frame */}
-        <div className="relative" style={{ width:280, height:160 }}>
+        {/* ── scan frame with spotlight ────────────────── */}
+        <div ref={frameRef} style={{ position: "relative", width: 300, height: 200 }}>
+
+          {/* spotlight: dark outside the frame, clear inside */}
+          <div style={{
+            position: "absolute", inset: 0,
+            boxShadow: "0 0 0 9999px rgba(0,0,0,0.62)",
+            borderRadius: 14,
+            pointerEvents: "none",
+          }} />
+
+          {/* corner brackets */}
           {(["tl","tr","bl","br"] as const).map((c) => (
             <div key={c} style={{
-              position:"absolute",
-              width:36, height:36,
-              top:    c[0]==="t"?0:"auto", bottom: c[0]==="b"?0:"auto",
-              left:   c[1]==="l"?0:"auto", right:  c[1]==="r"?0:"auto",
-              borderTop:    c[0]==="t"?`3px solid ${borderColor}`:"none",
-              borderBottom: c[0]==="b"?`3px solid ${borderColor}`:"none",
-              borderLeft:   c[1]==="l"?`3px solid ${borderColor}`:"none",
-              borderRight:  c[1]==="r"?`3px solid ${borderColor}`:"none",
-              borderRadius: c==="tl"?"8px 0 0 0":c==="tr"?"0 8px 0 0":c==="bl"?"0 0 0 8px":"0 0 8px 0",
-              transition:"border-color 0.25s",
+              position: "absolute",
+              width: 32, height: 32,
+              top:    c[0]==="t" ? 0 : "auto", bottom: c[0]==="b" ? 0 : "auto",
+              left:   c[1]==="l" ? 0 : "auto", right:  c[1]==="r" ? 0 : "auto",
+              borderTop:    c[0]==="t" ? `3px solid ${frameColor}` : "none",
+              borderBottom: c[0]==="b" ? `3px solid ${frameColor}` : "none",
+              borderLeft:   c[1]==="l" ? `3px solid ${frameColor}` : "none",
+              borderRight:  c[1]==="r" ? `3px solid ${frameColor}` : "none",
+              borderRadius: c==="tl"?"10px 0 0 0":c==="tr"?"0 10px 0 0":c==="bl"?"0 0 0 10px":"0 0 10px 0",
+              transition: "border-color 0.3s",
+              zIndex: 1,
             }} />
           ))}
 
-          {/* scan line — visible when scanning, not when detected */}
+          {/* scan sweep line */}
           {!detected && ready && (
             <div style={{
-              position:"absolute", left:8, right:8, height:2, borderRadius:1,
-              background:"linear-gradient(90deg,transparent,var(--gold,#FFD23F),transparent)",
-              animation:"scan-sweep 2s ease-in-out infinite", top:"50%",
-              opacity: pulse ? 1 : 0.6,
+              position: "absolute", left: 10, right: 10, height: 2, borderRadius: 1,
+              background: "linear-gradient(90deg,transparent,var(--gold,#FFD23F),transparent)",
+              animation: "scan-sweep 2s ease-in-out infinite",
+              opacity: pulse ? 1 : 0.55,
+              zIndex: 1,
             }} />
           )}
 
+          {/* detected checkmark */}
           {detected && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="rounded-full size-12 flex items-center justify-center"
-                style={{ background:"rgba(74,222,128,0.2)", border:"2px solid #4ade80" }}>
-                <Check size={24} color="#4ade80" strokeWidth={3} />
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+              <div style={{ borderRadius: "50%", width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(74,222,128,0.15)", border: "2px solid #4ade80" }}>
+                <Check size={26} color="#4ade80" strokeWidth={3} />
               </div>
+            </div>
+          )}
+
+          {/* guide label inside the frame */}
+          {!detected && (
+            <div style={{
+              position: "absolute", bottom: 10, left: 0, right: 0,
+              textAlign: "center", fontSize: 11, letterSpacing: "0.1em",
+              color: "rgba(255,255,255,0.5)", textTransform: "uppercase", zIndex: 1,
+            }}>
+              Verso da figurinha aqui
             </div>
           )}
         </div>
@@ -309,7 +356,7 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
             <div className="flex items-center gap-2 justify-center" style={{ color:"rgba(255,255,255,0.75)" }}>
               {pulse && <Loader2 size={13} className="animate-spin" style={{ color:"var(--gold,#FFD23F)" }} />}
               <span style={{ fontSize:14 }}>
-                {pulse ? "Analisando…" : "Aponte para o código no verso da figurinha"}
+                {pulse ? "Analisando…" : "Aponte o verso da figurinha para o quadro"}
               </span>
             </div>
           )}
@@ -321,12 +368,12 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
             <button onClick={toggleTorch} className="flex flex-col items-center gap-1.5">
               {torchOn
                 ? <Zap size={26} color="#FFD23F" fill="#FFD23F" />
-                : <ZapOff size={26} color="rgba(255,255,255,0.55)" />}
-              <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>Flash</span>
+                : <ZapOff size={26} color="rgba(255,255,255,0.45)" />}
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>Flash</span>
             </button>
             <button onClick={flipCamera} className="flex flex-col items-center gap-1.5">
-              <RotateCcw size={26} color="rgba(255,255,255,0.55)" />
-              <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>Câmera</span>
+              <RotateCcw size={26} color="rgba(255,255,255,0.45)" />
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>Câmera</span>
             </button>
           </div>
         )}
@@ -435,8 +482,8 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
 
       <style>{`
         @keyframes scan-sweep {
-          0%,100% { top:8%;  opacity:.25; }
-          50%      { top:84%; opacity:1;   }
+          0%,100% { top: 10%;  opacity: .3; }
+          50%      { top: 80%; opacity: 1;  }
         }
       `}</style>
     </div>,
