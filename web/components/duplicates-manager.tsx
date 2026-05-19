@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useDupesCount } from "@/components/dupes-count-context"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Search, Minus, Plus, Repeat2 } from "lucide-react"
+import { Search, Minus, Plus, Repeat2, Share2 } from "lucide-react"
 
 interface Props {
   userId: string
@@ -54,6 +54,38 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
     })
   }
 
+  function exportToWhatsApp() {
+    const withDupes = ALL_STICKERS.filter((s) => (duplicates.get(s.id) ?? 0) > 0)
+    if (withDupes.length === 0) { toast.error("Você não tem repetidas ainda"); return }
+
+    // Group by country
+    const byCountry = new Map<string, typeof withDupes>()
+    for (const s of withDupes) {
+      if (!byCountry.has(s.countryCode)) byCountry.set(s.countryCode, [])
+      byCountry.get(s.countryCode)!.push(s)
+    }
+
+    const totalUnits = Array.from(duplicates.values()).reduce((a, b) => a + b, 0)
+
+    let msg = `🔄 *Minhas Repetidas — Copa 2026*\n`
+    msg += `_(${withDupes.length} figurinha${withDupes.length !== 1 ? "s" : ""}, ${totalUnits} unidade${totalUnits !== 1 ? "s" : ""})_\n\n`
+
+    for (const [, stickers] of byCountry) {
+      const info = ALL_COUNTRIES.find((c) => c.code === stickers[0].countryCode)
+      msg += `${info?.flag ?? "🏆"} *${stickers[0].country}*\n`
+      for (const s of stickers) {
+        const qty = duplicates.get(s.id) ?? 0
+        const name = s.playerName ? ` — ${s.playerName}` : ""
+        msg += `  • ${s.code}${name} ×${qty}\n`
+      }
+      msg += "\n"
+    }
+
+    msg += `_Quer trocar? Me chama!_ 🤝`
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank")
+  }
+
   const filteredStickers = useMemo(() => {
     return ALL_STICKERS.filter((s) => {
       if (filter === "has" && (duplicates.get(s.id) ?? 0) === 0) return false
@@ -85,9 +117,22 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
         <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 6 }}>
           Suas duplicadas
         </div>
-        <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
-          Figurinhas <span style={{ color: "var(--gold)" }}>Repetidas</span>
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
+            Figurinhas <span style={{ color: "var(--gold)" }}>Repetidas</span>
+          </h1>
+          {totalDupes > 0 && (
+            <button
+              onClick={exportToWhatsApp}
+              className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95 shrink-0"
+              style={{ background: "#25D366", color: "#fff" }}
+              title="Exportar para WhatsApp"
+            >
+              <Share2 size={15} />
+              WhatsApp
+            </button>
+          )}
+        </div>
         <p style={{ color: "var(--ink-2)", marginTop: 8, fontSize: 14 }}>
           Use + e − para registrar quantas repetidas você tem. Publique direto na troca com 1 clique.
         </p>
