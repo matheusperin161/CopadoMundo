@@ -32,9 +32,21 @@ export async function proxy(request: NextRequest) {
   const { data: { user }, error } = await supabase.auth.getUser()
 
   if (error) {
+    // Stale session: clear ALL sb- cookies with proper attributes so the browser actually removes them.
+    // Using only .delete(name) without path:"/" can silently fail, leaving stale cookies behind
+    // and causing this error to fire on every subsequent request.
     const response = NextResponse.redirect(new URL("/login", request.url))
+    const isProd = process.env.NODE_ENV === "production"
     request.cookies.getAll().forEach((c) => {
-      if (c.name.startsWith("sb-")) response.cookies.delete(c.name)
+      if (c.name.startsWith("sb-")) {
+        response.cookies.set(c.name, "", {
+          maxAge: 0,
+          path: "/",
+          httpOnly: true,
+          sameSite: "lax",
+          secure: isProd,
+        })
+      }
     })
     return response
   }
