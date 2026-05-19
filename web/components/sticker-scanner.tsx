@@ -25,6 +25,7 @@ function parse(text: string): string | null {
 }
 
 /* ── canvas helpers ───────────────────────────────────────── */
+// Crops video to the on-screen frame region, converts to grayscale, max 800px
 function drawGrayFromFrame(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
@@ -35,11 +36,11 @@ function drawGrayFromFrame(
   const screenW = window.innerWidth
   const screenH = window.innerHeight
 
-  // object-cover: video fills the screen, excess cropped
+  // object-cover scale: video is enlarged so its smaller dimension matches screen
   const scale = Math.max(screenW / vw, screenH / vh)
   const displayW = vw * scale
   const displayH = vh * scale
-  const offsetX = (displayW - screenW) / 2
+  const offsetX = (displayW - screenW) / 2  // excess video pixels on each side
   const offsetY = (displayH - screenH) / 2
 
   // Map frame rect (screen coords) → video natural coords
@@ -50,15 +51,21 @@ function drawGrayFromFrame(
 
   const sx = Math.max(0, vidX)
   const sy = Math.max(0, vidY)
-  const sw = Math.min(vw - sx, vidW)
-  const sh = Math.min(vh - sy, vidH)
+  const sw = Math.min(vw - sx, Math.max(1, vidW))
+  const sh = Math.min(vh - sy, Math.max(1, vidH))
 
-  canvas.width  = Math.max(1, sw)
-  canvas.height = Math.max(1, sh)
+  // Scale down if the crop region is very large (speeds up OCR)
+  const maxPx = 800
+  const cropScale = Math.min(1, maxPx / Math.max(sw, sh))
+  const dw = Math.max(1, Math.round(sw * cropScale))
+  const dh = Math.max(1, Math.round(sh * cropScale))
+
+  canvas.width  = dw
+  canvas.height = dh
   const ctx = canvas.getContext("2d")!
-  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, dw, dh)
 
-  const id = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const id = ctx.getImageData(0, 0, dw, dh)
   const d  = id.data
   for (let i = 0; i < d.length; i += 4) {
     const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
@@ -97,6 +104,34 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
   const [pulse,       setPulse]       = useState(false)
   const supabase = createClient()
 
+  // Persistent Tesseract worker — created once, reused across scans
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tesseractWorkerRef = useRef<any>(null)
+  const tesseractBusyRef   = useRef(false)
+
+  /* ── init Tesseract worker once ─────────────────────────── */
+  useEffect(() => {
+    if ("TextDetector" in window) return   // TextDetector available — no need for Tesseract
+    let cancelled = false
+    async function initWorker() {
+      const { createWorker } = await import("tesseract.js")
+      const w = await createWorker("eng")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (w as any).setParameters({
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ",
+        tessedit_pageseg_mode: "11",
+      })
+      if (cancelled) { w.terminate(); return }
+      tesseractWorkerRef.current = w
+    }
+    initWorker()
+    return () => {
+      cancelled = true
+      tesseractWorkerRef.current?.terminate()
+      tesseractWorkerRef.current = null
+    }
+  }, [])
+
   /* ── camera ─────────────────────────────────────────────── */
   const stopStream = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -118,40 +153,37 @@ export default function StickerScannerModal({ userId, owned, onClose, onCollecti
     const video  = videoRef.current
     const canvas = canvasRef.current
     const frame  = frameRef.current
-    if (!video || !canvas || !frame || video.readyState < 2 || video.videoWidth === 0) return null
+    if (!video || !canvas || video.readyState < 2 || video.videoWidth === 0) return null
 
-    // Crop canvas to exactly what the frame box shows
-    const rect = frame.getBoundingClientRect()
-    drawGrayFromFrame(video, canvas, rect)
-
-    // 1. Native TextDetector on the cropped canvas (Chrome 74+ Android — instant)
+    // 1. Native TextDetector directly on the video element (Chrome Android — instant)
+    //    Running on video gives the best results; TextDetector reads the GPU frame directly.
     if ("TextDetector" in window) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const det = new (window as any).TextDetector()
-        const blocks: Array<{ rawValue: string }> = await det.detect(canvas)
+        const blocks: Array<{ rawValue: string }> = await det.detect(video)
         for (const b of blocks) { const id = parse(b.rawValue); if (id) return id }
         return null
       } catch { /* fall through to Tesseract */ }
     }
 
-    // 2. Tesseract.js with 5-second hard timeout — fresh worker each call
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.88)
-    const { createWorker } = await import("tesseract.js")
-    const worker = await createWorker("eng")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (worker as any).setParameters({
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ",
-      tessedit_pageseg_mode: "11",
-    })
+    // 2. Tesseract — use persistent worker (already initialised on mount)
+    //    If worker not ready yet or previous recognize() is still running, skip this frame.
+    if (!tesseractWorkerRef.current || tesseractBusyRef.current) return null
+    if (!frame) return null
 
-    const timeout = new Promise<null>((res) => setTimeout(() => res(null), 5000))
-    const ocr     = worker.recognize(dataUrl)
-      .then(({ data: { text } }) => parse(text))
+    const rect = frame.getBoundingClientRect()
+    drawGrayFromFrame(video, canvas, rect)
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.88)
+
+    tesseractBusyRef.current = true
+    const timeout = new Promise<null>((res) => setTimeout(() => res(null), 4000))
+    const ocr     = tesseractWorkerRef.current.recognize(dataUrl)
+      .then(({ data: { text } }: { data: { text: string } }) => parse(text))
       .catch(() => null)
 
     const result = await Promise.race([ocr, timeout])
-    worker.terminate()
+    tesseractBusyRef.current = false
     return result
   }, [])
 
