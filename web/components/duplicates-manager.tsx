@@ -8,6 +8,7 @@ import { useDupesCount } from "@/components/dupes-count-context"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Search, Minus, Plus, Repeat2, Share2 } from "lucide-react"
+import { shareViaWhatsApp } from "@/lib/share"
 
 interface Props {
   userId: string
@@ -72,10 +73,11 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
 
     for (const [, stickers] of byCountry) {
       const group = stickers[0].group
-      const prefix = group === "FWC" ? "🏆 " : group === "CC" ? "🥤 " : ""
-      msg += `${prefix}*${stickers[0].country}*\n`
+      const info  = ALL_COUNTRIES.find((c) => c.code === stickers[0].countryCode)
+      const flag  = group === "FWC" ? "🏆" : group === "CC" ? "🥤" : (info?.flag ?? "")
+      msg += `${flag} *${stickers[0].country}*\n`
       for (const s of stickers) {
-        const qty = duplicates.get(s.id) ?? 0
+        const qty  = duplicates.get(s.id) ?? 0
         const name = s.playerName && group !== "CC" ? ` — ${s.playerName}` : ""
         msg += `  • ${s.code}${name} ×${qty}\n`
       }
@@ -84,7 +86,7 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
 
     msg += `_Quer trocar? Me chama!_ 🤝`
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank")
+    shareViaWhatsApp(msg)
   }
 
   const filteredStickers = useMemo(() => {

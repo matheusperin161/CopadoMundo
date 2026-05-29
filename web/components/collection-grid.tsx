@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Search, Check, ScanLine, Share2 } from "lucide-react"
+import { shareViaWhatsApp } from "@/lib/share"
 import CountryFlag from "@/components/country-flag"
 
 const StickerScannerModal = lazy(() => import("@/components/sticker-scanner"))
@@ -96,8 +97,9 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
 
     for (const [, stickers] of byCountry) {
       const group = stickers[0].group
-      const prefix = group === "FWC" ? "🏆 " : group === "CC" ? "🥤 " : ""
-      msg += `${prefix}*${stickers[0].country}*\n`
+      const info  = ALL_COUNTRIES.find((c) => c.code === stickers[0].countryCode)
+      const flag  = group === "FWC" ? "🏆" : group === "CC" ? "🥤" : (info?.flag ?? "")
+      msg += `${flag} *${stickers[0].country}*\n`
       for (const s of stickers) {
         const name = s.playerName && group !== "CC" ? ` — ${s.playerName}` : ""
         msg += `  • ${s.code}${name}\n`
@@ -107,7 +109,7 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
 
     msg += `_Tem alguma dessas? Me ajuda a completar!_ 🙏`
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank")
+    shareViaWhatsApp(msg)
   }
 
   function handleScanCollectionAdd(stickerId: string) {
