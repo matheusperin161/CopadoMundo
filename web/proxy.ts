@@ -67,7 +67,7 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  const protectedPaths = ["/inicio", "/colecao", "/repetidas", "/trocas", "/chat"]
+  const protectedPaths = ["/inicio", "/colecao", "/repetidas", "/trocas", "/chat", "/u"]
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p))
 
   if (!user && isProtected) {

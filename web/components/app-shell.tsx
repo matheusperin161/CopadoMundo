@@ -11,6 +11,9 @@ import { DupesCountProvider, useDupesCount } from "@/components/dupes-count-cont
 import ChatProvider, { useChatContext } from "@/components/chat-provider"
 import ScrollToTop from "@/components/scroll-to-top"
 import { cn } from "@/lib/utils"
+import { useState, lazy, Suspense } from "react"
+
+const MyProfileSheet = lazy(() => import("@/components/my-profile-sheet"))
 
 interface User {
   id: string
@@ -47,6 +50,8 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
     router.push("/login")
     router.refresh()
   }
+
+  const [showProfile, setShowProfile] = useState(false)
 
   const initials = user.fullName
     .split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
@@ -119,14 +124,16 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
             className="flex items-center gap-3 p-3 rounded-xl"
             style={{ border: "1px solid var(--line)" }}
           >
-            <Avatar className="size-9 rounded-xl" style={{ borderRadius: 10 }}>
-              <AvatarImage src={user.avatarUrl ?? undefined} />
-              <AvatarFallback
-                style={{ background: "linear-gradient(135deg, #A78BFA, #F472B6)", color: "white", fontWeight: 700, fontSize: 13 }}
-              >
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <button onClick={() => setShowProfile(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, borderRadius: 10 }}>
+              <Avatar className="size-9 rounded-xl" style={{ borderRadius: 10 }}>
+                <AvatarImage src={user.avatarUrl ?? undefined} />
+                <AvatarFallback
+                  style={{ background: "linear-gradient(135deg, #A78BFA, #F472B6)", color: "white", fontWeight: 700, fontSize: 13 }}
+                >
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </button>
             <div className="flex-1 min-w-0">
               <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-0)" }} className="truncate">{user.fullName}</p>
               <p style={{ fontSize: 11, color: "var(--ink-3)" }} className="truncate">{user.email}</p>
@@ -182,12 +189,14 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
             >
               {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-            <Avatar className="size-8" style={{ borderRadius: 8 }}>
-              <AvatarImage src={user.avatarUrl ?? undefined} />
-              <AvatarFallback style={{ background: "linear-gradient(135deg, #A78BFA, #F472B6)", color: "white", fontWeight: 700, fontSize: 12 }}>
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <button onClick={() => setShowProfile(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, borderRadius: 8 }}>
+              <Avatar className="size-8" style={{ borderRadius: 8 }}>
+                <AvatarImage src={user.avatarUrl ?? undefined} />
+                <AvatarFallback style={{ background: "linear-gradient(135deg, #A78BFA, #F472B6)", color: "white", fontWeight: 700, fontSize: 12 }}>
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </button>
           </div>
         </div>
 
@@ -195,6 +204,16 @@ function AppShellInner({ children, user, matchCount }: { children: React.ReactNo
       </main>
 
       <ScrollToTop />
+
+      {showProfile && (
+        <Suspense fallback={null}>
+          <MyProfileSheet
+            userId={user.id}
+            userName={user.fullName}
+            onClose={() => setShowProfile(false)}
+          />
+        </Suspense>
+      )}
 
       {/* ── Bottom nav (mobile) ─────────────────────────── */}
       <nav
