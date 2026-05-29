@@ -258,7 +258,7 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
                     </div>
 
                     <div className="sticker-country">
-                      {sticker.playerName ? (
+                      {sticker.playerName && sticker.group !== "CC" ? (
                         <span className="sticker-player">{sticker.playerName}</span>
                       ) : (
                         <>
