@@ -148,25 +148,25 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
           <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
             Minha <span style={{ color: "var(--gold)" }}>Coleção</span>
           </h1>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex items-center gap-2 shrink-0">
             {totalOwned < totalStickers && (
               <button
                 onClick={exportToWhatsApp}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95 shrink-0"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
                 style={{ background: "#25D366", color: "#fff" }}
                 title="Exportar figurinhas faltantes para WhatsApp"
               >
                 <Share2 size={15} />
-                WhatsApp
+                <span className="hidden sm:inline">WhatsApp</span>
               </button>
             )}
             <button
               onClick={() => setShowScanner(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
               style={{ background: "var(--gold)", color: "#1a1300" }}
             >
               <ScanLine size={16} />
-              Escanear
+              <span className="hidden sm:inline">Escanear</span>
             </button>
           </div>
         </div>
