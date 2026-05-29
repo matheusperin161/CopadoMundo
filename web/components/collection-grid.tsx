@@ -5,7 +5,7 @@ import { ALL_STICKERS, ALL_COUNTRIES, GROUPS, countryGradient, type Sticker } fr
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Search, Check, ScanLine } from "lucide-react"
+import { Search, Check, ScanLine, Share2 } from "lucide-react"
 import CountryFlag from "@/components/country-flag"
 
 const StickerScannerModal = lazy(() => import("@/components/sticker-scanner"))
@@ -81,6 +81,34 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
     }
   }, [owned, userId, supabase])
 
+  function exportToWhatsApp() {
+    const missing = ALL_STICKERS.filter((s) => !owned.has(s.id))
+    if (missing.length === 0) { toast.success("Parabéns! Você completou o álbum!"); return }
+
+    const byCountry = new Map<string, typeof missing>()
+    for (const s of missing) {
+      if (!byCountry.has(s.countryCode)) byCountry.set(s.countryCode, [])
+      byCountry.get(s.countryCode)!.push(s)
+    }
+
+    let msg = `📋 *Figurinhas que Faltam — Copa 2026*\n`
+    msg += `_(${missing.length} figurinha${missing.length !== 1 ? "s" : ""} faltando)_\n\n`
+
+    for (const [, stickers] of byCountry) {
+      const info = ALL_COUNTRIES.find((c) => c.code === stickers[0].countryCode)
+      msg += `${info?.flag ?? "🏆"} *${stickers[0].country}*\n`
+      for (const s of stickers) {
+        const name = s.playerName && s.group !== "CC" ? ` — ${s.playerName}` : ""
+        msg += `  • ${s.code}${name}\n`
+      }
+      msg += "\n"
+    }
+
+    msg += `_Tem alguma dessas? Me ajuda a completar!_ 🙏`
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank")
+  }
+
   function handleScanCollectionAdd(stickerId: string) {
     setOwned((prev) => new Set(prev).add(stickerId))
   }
@@ -120,7 +148,18 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
           <h1 style={{ fontFamily: "var(--font-bebas)", fontSize: 56, letterSpacing: "0.02em", lineHeight: 0.95, margin: 0, color: "var(--ink-0)" }}>
             Minha <span style={{ color: "var(--gold)" }}>Coleção</span>
           </h1>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-2">
+            {totalOwned < totalStickers && (
+              <button
+                onClick={exportToWhatsApp}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95 shrink-0"
+                style={{ background: "#25D366", color: "#fff" }}
+                title="Exportar figurinhas faltantes para WhatsApp"
+              >
+                <Share2 size={15} />
+                WhatsApp
+              </button>
+            )}
             <button
               onClick={() => setShowScanner(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
