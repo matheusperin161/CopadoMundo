@@ -95,10 +95,11 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
     msg += `_(${missing.length} figurinha${missing.length !== 1 ? "s" : ""} faltando)_\n\n`
 
     for (const [, stickers] of byCountry) {
-      const info = ALL_COUNTRIES.find((c) => c.code === stickers[0].countryCode)
-      msg += `${info?.flag ?? "🏆"} *${stickers[0].country}*\n`
+      const group = stickers[0].group
+      const prefix = group === "FWC" ? "🏆 " : group === "CC" ? "🥤 " : ""
+      msg += `${prefix}*${stickers[0].country}*\n`
       for (const s of stickers) {
-        const name = s.playerName && s.group !== "CC" ? ` — ${s.playerName}` : ""
+        const name = s.playerName && group !== "CC" ? ` — ${s.playerName}` : ""
         msg += `  • ${s.code}${name}\n`
       }
       msg += "\n"

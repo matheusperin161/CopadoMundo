@@ -71,11 +71,12 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
     msg += `_(${withDupes.length} figurinha${withDupes.length !== 1 ? "s" : ""}, ${totalUnits} unidade${totalUnits !== 1 ? "s" : ""})_\n\n`
 
     for (const [, stickers] of byCountry) {
-      const info = ALL_COUNTRIES.find((c) => c.code === stickers[0].countryCode)
-      msg += `${info?.flag ?? "🏆"} *${stickers[0].country}*\n`
+      const group = stickers[0].group
+      const prefix = group === "FWC" ? "🏆 " : group === "CC" ? "🥤 " : ""
+      msg += `${prefix}*${stickers[0].country}*\n`
       for (const s of stickers) {
         const qty = duplicates.get(s.id) ?? 0
-        const name = s.playerName ? ` — ${s.playerName}` : ""
+        const name = s.playerName && group !== "CC" ? ` — ${s.playerName}` : ""
         msg += `  • ${s.code}${name} ×${qty}\n`
       }
       msg += "\n"
