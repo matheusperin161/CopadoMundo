@@ -160,7 +160,6 @@ export default function CollectionGrid({ userId, initialOwned, initialDuplicates
                 title="Exportar figurinhas faltantes para WhatsApp"
               >
                 <Share2 size={15} />
-                <span className="hidden sm:inline">WhatsApp</span>
               </button>
             )}
             <button

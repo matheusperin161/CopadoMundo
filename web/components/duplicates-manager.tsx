@@ -132,7 +132,6 @@ export default function DuplicatesManager({ userId, initialDuplicates }: Props) 
               title="Exportar para WhatsApp"
             >
               <Share2 size={15} />
-              WhatsApp
             </button>
           )}
         </div>
